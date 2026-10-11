@@ -44,6 +44,53 @@ token (when set) or from a key file inside the data volume.
 > front of Dyad for anything that is not a private LAN. Session cookies are
 > `Secure` when the origin is https.
 
+## Exposing it publicly (tunnel)
+
+On a headless VM `localhost` is only reachable from the VM itself. The
+quickest way to get a public HTTPS URL is a [Cloudflare quick tunnel]
+(`cloudflared`), which needs no account or DNS setup:
+
+```sh
+sudo dpkg -i cloudflared-linux-amd64.deb   # from cloudflare/cloudflared releases
+cloudflared tunnel --url http://127.0.0.1:3000 --no-autoupdate
+```
+
+It prints an `https://<random>.trycloudflare.com` URL. Quick tunnels get a
+**new hostname on every restart**, so `DYAD_WEB_PUBLIC_ORIGIN` has to follow
+it — otherwise preview URLs and the `frame-ancestors` CSP point at a stale
+origin. The included wrapper does that bookkeeping:
+
+```sh
+/home/sajib/dyad-tunnel/run-tunnel.sh
+```
+
+It starts the tunnel, scrapes the hostname, recreates the `dyad-web` container
+with `DYAD_WEB_PUBLIC_ORIGIN` set to that URL, and writes the token to
+`/home/sajib/dyad-tunnel/web-token`. A systemd unit keeps it alive across
+reboots:
+
+```sh
+sudo systemctl enable --now dyad-tunnel.service
+systemctl status dyad-tunnel.service
+cat /home/sajib/dyad-tunnel/tunnel-url.txt     # current public URL
+cat /home/sajib/dyad-tunnel/web-token          # access token
+# open <url>/?token=<token>
+```
+
+Notes:
+
+- The container is bound to `127.0.0.1:3000` in this setup, so the only way in
+  is through the tunnel — the app is never directly exposed on the VM's
+  interfaces.
+- A `?token=` visit sets an `HttpOnly; SameSite=Lax; Secure` cookie (30 days),
+  so assets, XHR and the IPC WebSocket authenticate on their own afterwards.
+- The first visit must include `?token=`; without it you get `401`.
+- Quick tunnel hostnames are ephemeral. For a stable URL, use a [named
+  tunnel] with a domain you control, then set `DYAD_WEB_PUBLIC_ORIGIN` to it.
+
+[Cloudflare quick tunnel]: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/use-cases/tunnel/try-cloudflared/
+[named tunnel]: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-tunnel/
+
 ## How it works
 
 | Desktop (Electron)                     | Web build                                            |

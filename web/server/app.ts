@@ -78,19 +78,40 @@ interface ServerOptions {
 // ---------------------------------------------------------------------------
 
 const TOKEN_COOKIE = "dyad_web_token";
+/** 30 days — long enough to survive a tunnel hostname change. */
+const TOKEN_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
-function readToken(req: http.IncomingMessage): string | null {
+type TokenSource = "bearer" | "cookie" | "query" | null;
+
+function readTokenSource(req: http.IncomingMessage): {
+  value: string | null;
+  source: TokenSource;
+} {
   const header = req.headers.authorization;
-  if (header?.startsWith("Bearer ")) return header.slice("Bearer ".length);
+  if (header?.startsWith("Bearer ")) {
+    return { value: header.slice("Bearer ".length), source: "bearer" };
+  }
   const cookie = req.headers.cookie;
   if (cookie) {
     for (const part of cookie.split(";")) {
       const [name, ...rest] = part.trim().split("=");
-      if (name === TOKEN_COOKIE) return decodeURIComponent(rest.join("="));
+      if (name === TOKEN_COOKIE) {
+        return {
+          value: decodeURIComponent(rest.join("=")),
+          source: "cookie",
+        };
+      }
     }
   }
   const url = new URL(req.url ?? "/", "http://placeholder");
-  return url.searchParams.get("token");
+  const fromQuery = url.searchParams.get("token");
+  return fromQuery
+    ? { value: fromQuery, source: "query" }
+    : { value: null, source: null };
+}
+
+function readToken(req: http.IncomingMessage): string | null {
+  return readTokenSource(req).value;
 }
 
 function isAuthorized(
@@ -99,6 +120,48 @@ function isAuthorized(
 ): boolean {
   if (!token) return true;
   return readToken(req) === token;
+}
+
+/**
+ * True when the request arrived over TLS, including via a reverse proxy
+ * (cloudflared sets `X-Forwarded-Proto: https`). Used to decide whether the
+ * session cookie may carry the `Secure` attribute.
+ */
+function requestIsSecure(
+  req: http.IncomingMessage,
+  publicOrigin: string,
+): boolean {
+  if ((req.socket as { encrypted?: boolean }).encrypted === true) return true;
+  const forwarded = req.headers["x-forwarded-proto"];
+  if (
+    typeof forwarded === "string" &&
+    forwarded.split(",")[0]?.trim() === "https"
+  ) {
+    return true;
+  }
+  return publicOrigin.startsWith("https://");
+}
+
+/**
+ * Persists a `?token=` visit as a cookie so the follow-up requests a page
+ * makes (assets, XHR, the IPC WebSocket handshake) authenticate on their own.
+ * Only called when the token arrived in the query string — a request that
+ * already carried a cookie or bearer token needs no session established.
+ */
+function issueSessionCookie(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  token: string | null,
+  publicOrigin: string,
+): void {
+  if (!token) return;
+  const { value, source } = readTokenSource(req);
+  if (source !== "query" || value !== token) return;
+  const secure = requestIsSecure(req, publicOrigin) ? "; Secure" : "";
+  res.setHeader(
+    "Set-Cookie",
+    `${TOKEN_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${TOKEN_COOKIE_MAX_AGE}${secure}`,
+  );
 }
 
 function sendJson(
@@ -622,6 +685,10 @@ export async function startWebServer(
         sendJson(res, 401, { error: "Unauthorized" });
         return;
       }
+
+      // A `?token=` visit becomes a cookie so asset/XHR/WS follow-ups
+      // authenticate without re-appending the query string.
+      issueSessionCookie(req, res, token, publicOrigin);
 
       if (url.pathname.startsWith(PREVIEW_PREFIX)) {
         const target = parsePreviewTarget(url.pathname);
