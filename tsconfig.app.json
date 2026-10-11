@@ -37,6 +37,7 @@
     "src",
     "e2e-tests",
     "shared",
+    "web",
     "packages/ts-pg-schema-diff/src",
     "packages/pg-schema-classifier/src"
   ],

@@ -355,7 +355,7 @@ const noopDialogResult = {
 
 const dialog = {
   showOpenDialog: (): Promise<typeof noopDialogResult> =>
-    Promise.resolve({ canceled: true, filePaths: [] }),
+    Promise.resolve({ canceled: true, filePaths: [], filePath: undefined }),
   showOpenDialogSync: (): string[] => [],
   showSaveDialog: (): Promise<{ canceled: boolean; filePath?: string }> =>
     Promise.resolve({ canceled: true }),

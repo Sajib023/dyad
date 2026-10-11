@@ -17,6 +17,7 @@ import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
+import { Duplex } from "node:stream";
 import { AddressInfo } from "node:net";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -276,10 +277,10 @@ function rewriteHtmlForPreview(html: string, prefix: string): string {
     },
   );
   out = out.replace(HTML_SRCSET_RE, (match, _quoted, double, single) => {
-    const value = double ?? single ?? "";
+    const value: string = double ?? single ?? "";
     const rewritten = value
       .split(",")
-      .map((candidate) => {
+      .map((candidate: string) => {
         const trimmed = candidate.trim();
         if (!trimmed) return candidate;
         const space = trimmed.search(/\s/);
@@ -347,7 +348,8 @@ function forwardPreviewRequest(
           const upstreamOrigin = `http://app-${target.appId}.localhost:${target.port}`;
           const resolved = new URL(location, upstreamOrigin);
           if (resolved.origin === upstreamOrigin) {
-            outHeaders.location = prefixBase + resolved.pathname + resolved.search;
+            outHeaders.location =
+              prefixBase + resolved.pathname + resolved.search;
           }
         } catch {
           // leave unparseable Location headers alone
@@ -692,7 +694,7 @@ export async function startWebServer(
 
 function proxyPreviewUpgrade(
   req: http.IncomingMessage,
-  socket: net.Socket,
+  socket: net.Socket | Duplex,
   head: Buffer,
   target: PreviewTarget,
 ): void {
