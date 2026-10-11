@@ -1,0 +1,51 @@
+# Self-hosted Dyad web.
+#
+#   docker compose up -d --build
+#   open http://localhost:3000
+#
+# All persistent state (settings, sqlite, encrypted secrets, generated apps,
+# managed runtimes) lives in the `dyad-data` volume mounted at /data.
+
+services:
+  dyad-web:
+    build: .
+    image: dyad-web:latest
+    container_name: dyad-web
+    init: true
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - dyad-data:/data
+    environment:
+      # Absolute origin used for preview URLs and the WebSocket endpoint.
+      # Set this to the URL you actually browse with (IP/hostname + port).
+      DYAD_WEB_PUBLIC_ORIGIN: ${DYAD_WEB_PUBLIC_ORIGIN:-http://localhost:3000}
+      # Optional shared secret that gates access to the whole web UI.
+      # With it set, browse /?token=<value> once to receive a session cookie.
+      DYAD_WEB_TOKEN: ${DYAD_WEB_TOKEN:-}
+      # Model providers — pass through any keys you want available server-side.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY:-}
+      # Dyad also reads keys the user saves in Settings > API keys, which are
+      # stored encrypted in the volume.
+      DYAD_HOME: /data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  dyad-data:
+    name: dyad-data

@@ -313,17 +313,31 @@ function parseRendererCrashPerformance(
   return parsed.success ? parsed.data : undefined;
 }
 
+/**
+ * Overrides applied when Dyad runs headless behind `web/server`.
+ *
+ * In web mode previews are reached through a path prefix on the Dyad origin
+ * (`/__dyad_preview/<appId>/…`) and the web server rewrites `Host` to
+ * `app-<appId>.localhost:<port>` — which the preview proxy only accepts when
+ * app preview domains are enabled. So force the setting on regardless of what
+ * the settings file says; a stored `false` would make every preview 421.
+ */
+function applyWebModeOverrides(settings: UserSettings): UserSettings {
+  if (process.env.DYAD_WEB !== "1") return settings;
+  return { ...settings, enableAppPreviewDomains: true };
+}
+
 export function readSettings(): UserSettings {
   try {
     const filePath = getSettingsFilePath();
     if (!fs.existsSync(filePath)) {
       fs.writeFileSync(filePath, JSON.stringify(DEFAULT_SETTINGS, null, 2));
-      return DEFAULT_SETTINGS;
+      return applyWebModeOverrides(DEFAULT_SETTINGS);
     }
-    return readExistingSettingsFile(filePath).settings;
+    return applyWebModeOverrides(readExistingSettingsFile(filePath).settings);
   } catch (error) {
     logger.error("Error reading settings:", error);
-    return DEFAULT_SETTINGS;
+    return applyWebModeOverrides(DEFAULT_SETTINGS);
   }
 }
 

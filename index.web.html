@@ -1,0 +1,21 @@
+<!doctype html>
+<html class="notranslate" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="google" content="notranslate" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dyad</title>
+    <link href="/src/styles/globals.css" rel="stylesheet" />
+    <!--
+      The IPC client MUST be the first module script: module scripts execute in
+      document order, and `src/renderer.tsx` starts querying over IPC as soon as
+      its module graph evaluates. Installing `window.electron` first keeps the
+      renderer unaware that it is not running under Electron.
+    -->
+    <script type="module" src="/web/renderer/ipc_client.ts"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/renderer.tsx"></script>
+  </body>
+</html>

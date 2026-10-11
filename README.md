@@ -18,6 +18,19 @@ No sign-up required. Just download and go.
 
 ### [👉 Download for your platform](https://www.dyad.sh/#download)
 
+## 🐳 Self-hosted web build
+
+This fork can also run Dyad as a self-hosted web service instead of a desktop
+app — same main process, same generated apps, served from a container:
+
+```sh
+docker compose up -d --build
+# open http://localhost:3000
+```
+
+See [docs/WEB_SELF_HOSTING.md](./docs/WEB_SELF_HOSTING.md) for configuration,
+the security model, and known limitations.
+
 ## 🤝 Community
 
 Join our growing community of AI app builders on **Reddit**: [r/dyadbuilders](https://www.reddit.com/r/dyadbuilders/) - share your projects and get help from the community!

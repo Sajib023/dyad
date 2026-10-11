@@ -15,6 +15,24 @@ const path = require("path");
 const LISTEN_HOST = "127.0.0.1";
 const LISTEN_PORT = workerData.port;
 const PREVIEW_HOSTNAME = workerData.hostname;
+
+/* --------------------------------------------------------------------------
+ * Web mode (`web/server`)
+ *
+ * The self-hosted web build reaches every preview through a path prefix on the
+ * Dyad origin (`/__dyad_preview/<appId>/…`) via a reverse proxy that sets
+ * `Host: app-<appId>.localhost:<port>`. Two things Dyad does for the Electron
+ * shell do not hold there:
+ *
+ *   1. The Dyad service worker is registered at the origin root scope, which
+ *      in a browser sharing one origin across apps would hijack every request.
+ *   2. `frame-ancestors` only allows localhost/file ancestors, but the Dyad
+ *      shell is now served from its own http origin.
+ * -------------------------------------------------------------------------- */
+const IS_WEB_MODE = process.env.DYAD_WEB === "1";
+const WEB_PUBLIC_ORIGIN = String(
+  process.env.DYAD_WEB_PUBLIC_ORIGIN || "",
+).replace(/\/+$/, "");
 // Keep this worker-side check aligned with shared/preview_hostname.ts's
 // isAppPreviewHostname; the unbundled worker cannot import TypeScript.
 if (
@@ -317,12 +335,17 @@ function injectHTML(buf) {
       '<script>console.warn("[proxy-worker] dyad_logs.js was not injected.");</script>',
     );
   }
-  if (dyadSwRegisterContent) {
-    scripts.push(`<script>${dyadSwRegisterContent}</script>`);
-  } else {
-    scripts.push(
-      '<script>console.warn("[proxy-worker] dyad-sw-register.js was not injected.");</script>',
-    );
+  // Skipped in web mode (see IS_WEB_MODE above): the registration script
+  // registers `/dyad-sw.js` with `scope: "/"`, which would take over the Dyad
+  // shell's own requests when every preview shares one origin.
+  if (!IS_WEB_MODE) {
+    if (dyadSwRegisterContent) {
+      scripts.push(`<script>${dyadSwRegisterContent}</script>`);
+    } else {
+      scripts.push(
+        '<script>console.warn("[proxy-worker] dyad-sw-register.js was not injected.");</script>',
+      );
+    }
   }
   const allScripts = scripts.join("\n");
 
@@ -414,7 +437,9 @@ function rewriteSetCookieHeaders(headers) {
 }
 
 const PROXY_FRAME_ANCESTORS_CSP =
-  "frame-ancestors 'self' file: http://localhost:* http://127.0.0.1:* http://[::1]:*";
+  "frame-ancestors 'self' file: http://localhost:* http://127.0.0.1:* http://[::1]:*" +
+  // Web mode: allow the Dyad shell origin to embed the preview in its iframe.
+  (WEB_PUBLIC_ORIGIN ? ` ${WEB_PUBLIC_ORIGIN}` : "");
 
 function appendHeader(headers, name, value) {
   const lowerName = name.toLowerCase();
@@ -453,8 +478,10 @@ const server = http.createServer((clientReq, clientRes) => {
     clientRes.end("This preview belongs to a different app hostname.");
     return;
   }
-  // Special handling for Service Worker file
-  if (clientReq.url === "/dyad-sw.js") {
+  // Special handling for Service Worker file. Skipped in web mode: the
+  // registration is scoped to the origin root, which would take over the Dyad
+  // shell's own requests when every preview shares that origin.
+  if (!IS_WEB_MODE && clientReq.url === "/dyad-sw.js") {
     if (dyadSwContent) {
       clientRes.writeHead(200, {
         "content-type": "application/javascript",

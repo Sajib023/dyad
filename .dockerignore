@@ -1,0 +1,40 @@
+# Build context hygiene: everything below is either produced by the build,
+# fetched from the network, or irrelevant to the image.
+.git
+.gitignore
+.gitattributes
+
+# dependencies / build output (installed and built inside the image)
+node_modules
+dist
+dist-staging
+dist-web
+.vite
+.vitest
+coverage
+*.tsbuildinfo
+
+# runtime state (mounted as a volume instead)
+userData
+dyad-apps
+logs
+*.log
+
+# local secrets / env
+.env
+.env.*
+!.env.example
+
+# test & tooling artefacts
+playwright-report
+test-results
+blob-report
+.husky
+.cache
+
+# CI / docs not needed at runtime (docs stay in git, just not in the image)
+.github
+.claude
+.cursor
+.agents
+.devcontainer

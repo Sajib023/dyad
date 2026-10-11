@@ -3,6 +3,7 @@ import type { AppOutput } from "@/ipc/types/misc";
 import { appOutputInterests } from "@/window_infrastructure/main/production_high_volume";
 import type { AppRunProducerEvent } from "@/app_run/transport";
 import type { AppRunInvocationRef, RunUrl } from "@/app_run/state";
+import { rewriteAppUrlForWeb } from "@/ipc/utils/web_preview";
 
 const PROXY_PREFIX = "[dyad-proxy-server]started=[";
 
@@ -99,7 +100,7 @@ export class MainAppRuntimeOutput implements AppRuntimeOutput {
       return;
     }
     if (output.message.includes(PROXY_PREFIX)) {
-      const url = parseProxyReady(output.message);
+      const url = parseProxyReady(output.message, this.appId);
       if (url) {
         if (output.previewAuth) url.previewAuth = output.previewAuth;
         this.producer.send({ type: "PROXY_READY", invocationRef, url });
@@ -114,7 +115,7 @@ export class MainAppRuntimeOutput implements AppRuntimeOutput {
   }
 }
 
-function parseProxyReady(message: string): RunUrl | undefined {
+function parseProxyReady(message: string, appId: number): RunUrl | undefined {
   const appUrl = message.match(/\[dyad-proxy-server\]started=\[(.*?)\]/)?.[1];
   const originalUrl = message.match(/original=\[(.*?)\]/)?.[1];
   const mode = message.match(/mode=\[(.*?)\]/)?.[1];
@@ -125,5 +126,11 @@ function parseProxyReady(message: string): RunUrl | undefined {
   ) {
     return undefined;
   }
-  return { appUrl, originalUrl, mode };
+  // In web mode the app is reached through the shell's path prefix, not its
+  // own origin. The proxy URL is what the renderer loads in the preview iframe.
+  return {
+    appUrl: rewriteAppUrlForWeb(appUrl, appId),
+    originalUrl,
+    mode,
+  };
 }
