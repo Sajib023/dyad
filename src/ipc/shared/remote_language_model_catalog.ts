@@ -327,23 +327,9 @@ function convertRemoteCatalog(
       ],
     ),
   );
-  const remoteAutoModels = modelsByProvider.auto ?? [];
-  const fallbackAutoModels = MODEL_OPTIONS.auto.map((model) => ({
-    apiName: model.name,
-    displayName: model.displayName,
-    description: model.description,
-    tag: model.tag,
-    tagColor: model.tagColor,
-    maxOutputTokens: model.maxOutputTokens,
-    contextWindow: model.contextWindow,
-    temperature: model.temperature,
-    dollarSigns: model.dollarSigns,
-    effortSettings: model.effortSettings,
-    type: "cloud" as const,
-  }));
-  if (remoteAutoModels.length === 0) {
-    modelsByProvider.auto = fallbackAutoModels;
-  }
+  // The retired "auto" provider is filtered even if a stale remote
+  // catalog still serves it: selection is explicit provider/model only.
+  delete modelsByProvider.auto;
 
   const parsedExpiresAt = remoteCatalog.expiresAt
     ? new Date(remoteCatalog.expiresAt).getTime()

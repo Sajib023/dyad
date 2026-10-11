@@ -116,8 +116,21 @@ async function getSystemDebugInfo({
     console.error("Failed to get node path:", err);
   }
 
-  // Get Dyad version from package.json
-  const packageJsonPath = path.resolve(__dirname, "..", "..", "package.json");
+  // Get Dyad version from package.json (packaged: .vite/build -> app root;
+  // source: src/ipc/handlers -> repo root; Docker: cwd /app).
+  const packageJsonCandidates = [
+    path.resolve(__dirname, "..", "..", "package.json"),
+    path.resolve(__dirname, "..", "..", "..", "package.json"),
+    path.join(process.cwd(), "package.json"),
+  ];
+  const packageJsonPath =
+    packageJsonCandidates.find((candidate) => {
+      try {
+        return fs.existsSync(candidate);
+      } catch {
+        return false;
+      }
+    }) ?? packageJsonCandidates[0];
   let dyadVersion = "unknown";
   try {
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
@@ -333,13 +346,20 @@ export function registerDebugHandlers() {
     try {
       const settings = readSettings();
 
-      // Get Dyad version
-      const packageJsonPath = path.resolve(
-        __dirname,
-        "..",
-        "..",
-        "package.json",
-      );
+      // Get Dyad version (see above for layout fallbacks).
+      const packageJsonCandidates2 = [
+        path.resolve(__dirname, "..", "..", "package.json"),
+        path.resolve(__dirname, "..", "..", "..", "package.json"),
+        path.join(process.cwd(), "package.json"),
+      ];
+      const packageJsonPath =
+        packageJsonCandidates2.find((candidate) => {
+          try {
+            return fs.existsSync(candidate);
+          } catch {
+            return false;
+          }
+        }) ?? packageJsonCandidates2[0];
       let dyadVersion = "unknown";
       try {
         const packageJson = JSON.parse(

@@ -1,18 +1,10 @@
-import { showError } from "@/lib/toast";
 import { modelForChatBackend } from "@/shared/execution_backend";
-import { ClaudeCodeSubscriptionMenu } from "./ClaudeCodeSubscriptionMenu";
-import {
-  claudeCodeModelId,
-  claudeCodeModelIdentity,
-  claudeCodeDisplayName,
-  withClaudeCodeModels,
-} from "@/lib/claudeCodeModels";
 import {
   executionBackendForModel,
   requiresNewChatForModel,
 } from "@/shared/execution_backend";
 import { useSelectChat } from "@/hooks/useSelectChat";
-import { isDyadProEnabled, type LargeLanguageModel } from "@/lib/schemas";
+import { type LargeLanguageModel } from "@/lib/schemas";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -37,24 +29,15 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { PriceBadge } from "@/components/PriceBadge";
 import { cn } from "@/lib/utils";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
-import { useTrialModelRestriction } from "@/hooks/useTrialModelRestriction";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  CheckIcon,
-  ChevronRightIcon,
-  LockIcon,
-  SparklesIcon,
-} from "lucide-react";
+import { CheckIcon, ChevronRightIcon, LockIcon } from "lucide-react";
 import { ProviderIcon } from "@/components/ProviderIcon";
-import { SubscriptionModelMenu } from "@/components/SubscriptionModelMenu";
-import { useSubscriptionAccount } from "@/hooks/useSubscriptionAccount";
-import { usesChatGPTSubscription } from "@/lib/subscriptionModels";
 import {
   Dialog,
   DialogContent,
@@ -64,14 +47,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
-import { useFreeModelQuota } from "@/hooks/useFreeModelQuota";
-import {
-  FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
-  FREE_PRO_MODEL_NAME,
-  isFreeProBuildModeCombination,
-  isFreeProLanguageModel,
-  isFreeProModel,
-} from "@/lib/freeProModel";
 import { useRouterState } from "@tanstack/react-router";
 import { useChatMode } from "@/hooks/useChatMode";
 import {
@@ -86,12 +61,6 @@ import {
   getEffectiveRecentModels,
   isSameModel,
 } from "@/lib/recentModels";
-import {
-  AUTO_SIDEKICK_CHAT_MODE,
-  AUTO_SIDEKICK_DISPLAY_NAME,
-  AUTO_SIDEKICK_MODEL_NAME,
-  isAutoSidekickModel,
-} from "@/lib/autoSidekick";
 
 const SCROLL_AREA_CLASS = "max-h-100 overflow-y-auto scrollbar-on-hover";
 
@@ -99,14 +68,6 @@ const MODEL_MENU_WIDTH_CLASS = "w-[min(20rem,calc(100vw-1.5rem))]";
 
 const PILL_CLASS =
   "text-[10px] leading-none px-1.5 py-1 rounded-full font-medium";
-
-const PRO_PILL_CLASS = cn(
-  PILL_CLASS,
-  "bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-600 bg-[length:200%_100%] animate-[shimmer_5s_ease-in-out_infinite] text-white",
-);
-
-const DYAD_PRO_UPGRADE_BASE_URL =
-  "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app";
 
 const NAVIGATION_SUBMENU_HOVER_PROPS = {
   openOnHover: true,
@@ -195,8 +156,6 @@ export function ModelPicker() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const posthog = usePostHog();
-  const { isTrial, isLoadingTrialStatus } = useTrialModelRestriction();
-  const freeModelQuota = useFreeModelQuota();
 
   const hasEstablishedChat = Boolean(
     chat && (chat.modelSelection || chat.messages.length > 0),
@@ -206,38 +165,6 @@ export function ModelPicker() {
     (ModelSelectParams & { recentModels: LargeLanguageModel[] }) | null
   >(null);
   const [open, setOpen] = useState(false);
-  const claudeStatus = useQuery({
-    enabled:
-      !!settings?.enableClaudeCodeSubscription &&
-      (open ||
-        chat?.executionBackend === "claude-code" ||
-        settings?.selectedModel.provider === "claude-code"),
-    queryKey: queryKeys.system.claudeCodeStatus,
-    queryFn: () => ipc.chat.claudeCodeStatus({}),
-    staleTime: 10_000,
-  });
-  const claudeModels = useQuery({
-    queryKey: queryKeys.system.claudeCodeModels,
-    queryFn: () => ipc.chat.claudeCodeModels(),
-    enabled:
-      !!settings?.enableClaudeCodeSubscription &&
-      !!claudeStatus.data?.connected &&
-      !!claudeStatus.data?.compatible &&
-      (open ||
-        chat?.executionBackend === "claude-code" ||
-        settings?.selectedModel.provider === "claude-code"),
-    staleTime: 5 * 60_000,
-    retry: false,
-  });
-  const availableClaudeModels = claudeModels.isError
-    ? []
-    : (claudeModels.data ?? []);
-  const useClaudeCode =
-    !!settings?.enableClaudeCodeSubscription &&
-    settings.proModelUsage !== "pro" &&
-    settings.proModelUsage !== "api-key" &&
-    !!claudeStatus.data?.connected &&
-    !!claudeStatus.data?.compatible;
   const requiresNewChat = (model: LargeLanguageModel) =>
     Boolean(isChatRoute && chat && requiresNewChatForModel(chat, model));
   const performModelSelect = async ({
@@ -252,11 +179,6 @@ export function ModelPicker() {
     confirmed?: boolean;
   }) => {
     if (!settings || (isChatRoute && chatId != null && chatLoading)) return;
-    if (
-      model.provider === "claude-code" &&
-      !settings.enableClaudeCodeSubscription
-    )
-      return;
     const backendChange = requiresNewChat(model);
     if (!confirmed && backendChange) {
       confirmBackend.reset();
@@ -282,12 +204,6 @@ export function ModelPicker() {
       model: model.name,
       effortLevel: modelSelection.effortLevel,
     });
-    const fallbackChatMode = isAutoSidekickModel(model)
-      ? AUTO_SIDEKICK_CHAT_MODE
-      : isFreeProBuildModeCombination(model, selectedMode)
-        ? FREE_PRO_MODEL_FALLBACK_CHAT_MODE
-        : undefined;
-
     const preferenceUpdate = rememberEffort
       ? {
           modelEffortPreferences: {
@@ -296,23 +212,17 @@ export function ModelPicker() {
           },
         }
       : {};
-    const recentModelsUpdate =
-      model.provider === "auto"
-        ? settings.recentModels === undefined && recentModels.length > 0
-          ? { recentModels }
-          : {}
-        : {
-            recentModels: addRecentModel(recentModels, model),
-          };
+    const recentModelsUpdate = {
+      recentModels: addRecentModel(recentModels, model),
+    };
     if (backendChange && chat) {
       const newId = await ipc.chat.createChat({
         appId: chat.appId,
-        initialChatMode: fallbackChatMode ?? selectedMode,
+        initialChatMode: selectedMode,
         modelSelection,
       });
       await updateSettings({
         selectedModel: model,
-        ...(fallbackChatMode ? { selectedChatMode: fallbackChatMode } : {}),
         ...preferenceUpdate,
         ...recentModelsUpdate,
       });
@@ -327,17 +237,11 @@ export function ModelPicker() {
     ) {
       await setChatSelection({
         modelSelection,
-        ...(fallbackChatMode ? { chatMode: fallbackChatMode } : {}),
       });
-      if (
-        rememberEffort ||
-        model.provider !== "auto" ||
-        "recentModels" in recentModelsUpdate
-      ) {
+      if (rememberEffort || "recentModels" in recentModelsUpdate) {
         await updateSettings({
           ...preferenceUpdate,
           ...recentModelsUpdate,
-          ...(model.provider === "claude-code" ? { selectedModel: model } : {}),
         });
       }
     } else {
@@ -345,10 +249,6 @@ export function ModelPicker() {
         selectedModel: model,
         ...preferenceUpdate,
         ...recentModelsUpdate,
-        ...(fallbackChatMode ? { selectedChatMode: fallbackChatMode } : {}),
-        ...(isFreeProModel(model) && settings.defaultChatMode === "build"
-          ? { defaultChatMode: FREE_PRO_MODEL_FALLBACK_CHAT_MODE }
-          : {}),
       });
     }
     // Invalidate token count when model changes since different models have different context windows
@@ -356,7 +256,6 @@ export function ModelPicker() {
     queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
   };
 
-  const subscription = useSubscriptionAccount();
   const confirmBackend = useMutation({
     mutationFn: async () => {
       if (!pendingBackend) return;
@@ -375,9 +274,7 @@ export function ModelPicker() {
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
     if (nextOpen) {
-      posthog.capture("model-picker:open", {
-        isDyadPro: settings ? isDyadProEnabled(settings) : false,
-      });
+      posthog.capture("model-picker:open", {});
     }
   };
 
@@ -396,7 +293,6 @@ export function ModelPicker() {
   } = useLanguageModelProviders();
 
   const loading = modelsByProvidersLoading || providersLoading;
-  const dyadProEnabled = settings ? isDyadProEnabled(settings) : false;
   // Ollama Models Hook
   const {
     models: ollamaModels,
@@ -447,11 +343,6 @@ export function ModelPicker() {
   const getModelDisplayName = (
     displayModel: LargeLanguageModel = selectedModel,
   ) => {
-    if (displayModel.provider === "claude-code")
-      return `Claude Code — ${claudeCodeDisplayName(displayModel.name, availableClaudeModels, modelsByProviders)}`;
-    if (isAutoSidekickModel(displayModel)) {
-      return AUTO_SIDEKICK_DISPLAY_NAME;
-    }
     if (displayModel.provider === "ollama") {
       return (
         ollamaModels.find(
@@ -488,54 +379,6 @@ export function ModelPicker() {
     return displayModel.name;
   };
 
-  // Get auto provider models (if any)
-  const catalogAutoModels =
-    !loading && modelsByProviders && modelsByProviders["auto"]
-      ? modelsByProviders["auto"].filter((model) => {
-          if (
-            settings?.proModelUsage === "api-key" &&
-            (model.apiName === FREE_PRO_MODEL_NAME || model.apiName === "value")
-          ) {
-            return false;
-          }
-          if (model.apiName === FREE_PRO_MODEL_NAME) {
-            return dyadProEnabled && !isTrial && !isLoadingTrialStatus;
-          }
-          if (settings && !dyadProEnabled && model.apiName === "value") {
-            return false;
-          }
-          if (settings && !dyadProEnabled && model.apiName === "balanced") {
-            return false;
-          }
-          if (settings && dyadProEnabled && model.apiName === "free") {
-            return false;
-          }
-          return true;
-        })
-      : [];
-  const regularAutoModel = catalogAutoModels.find(
-    (model) => model.apiName === "auto",
-  );
-  const autoModels = regularAutoModel
-    ? catalogAutoModels.flatMap((model) =>
-        model.apiName === "auto" && dyadProEnabled
-          ? [
-              model,
-              {
-                ...model,
-                apiName: AUTO_SIDEKICK_MODEL_NAME,
-                displayName: AUTO_SIDEKICK_DISPLAY_NAME,
-                description:
-                  "Uses Auto and delegates straightforward implementation tasks to a Sidekick",
-                tag: "Experimental",
-                tagColor:
-                  "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
-              },
-            ]
-          : [model],
-      )
-    : catalogAutoModels;
-
   if (!settings) {
     return null;
   }
@@ -559,47 +402,19 @@ export function ModelPicker() {
       chat?.modelSelection?.effortLevel ??
       settings.modelEffortPreferences?.[getModelPreferenceKey(selectedModel)],
   }).effortLevel;
-  const selectedClaudeModelName = claudeCodeDisplayName(
-    selectedModel.name,
-    availableClaudeModels,
-    modelsByProviders,
-  )
-    .replace(/\s*\([^)]*\)/g, "")
-    .trim();
-  const modelDisplayName =
-    selectedModel.provider === "claude-code"
-      ? `${selectedClaudeModelName} (Claude Code)`
-      : getModelDisplayName();
-  const trialAutoModel = autoModels.find((model) => model.apiName === "auto");
-  const trialAutoEffortSettings = getEffortSettings(trialAutoModel);
-  const trialAutoEffort = createModelSelection({
-    model: { name: "auto", provider: "auto" },
-    catalogModel: trialAutoModel,
-    preferredEffortLevel:
-      selectedModel.provider === "auto" && selectedModel.name === "auto"
-        ? selectedEffortLevel
-        : settings.modelEffortPreferences?.[
-            getModelPreferenceKey({ name: "auto", provider: "auto" })
-          ],
-  }).effortLevel;
+  const modelDisplayName = getModelDisplayName();
   // The root menu is a quick switcher. The complete catalog is prepared here
   // for the nested "All models" menu.
-  const pickerCatalog = useClaudeCode
-    ? withClaudeCodeModels(modelsByProviders, availableClaudeModels)
-    : modelsByProviders;
   const providerEntries =
-    !loading && pickerCatalog
-      ? Object.entries(pickerCatalog).filter(
+    !loading && modelsByProviders
+      ? Object.entries(modelsByProviders).filter(
           ([providerId]) => providerId !== "auto",
         )
       : [];
-  const isVisibleCatalogModel = (providerId: string, model: LanguageModel) =>
-    !(
-      dyadProEnabled &&
-      settings.proModelUsage !== "api-key" &&
-      providerId === "openrouter" &&
-      isFreeOpenRouterModelName(model.apiName)
-    );
+  // All catalog models are visible; locked (keyless) ones open provider
+  // settings instead of selecting.
+  const isVisibleCatalogModel = (_providerId: string, _model: LanguageModel) =>
+    true;
   const isOtherProvider = (providerId: string) => {
     const provider = providers?.find(
       (candidate) => candidate.id === providerId,
@@ -608,7 +423,6 @@ export function ModelPicker() {
   };
   const primaryModelEntries = providerEntries
     .filter(([providerId]) => !isOtherProvider(providerId))
-    .filter(([providerId]) => !isTrial || providerId === "claude-code")
     .flatMap(([providerId, models], providerIndex) =>
       models.flatMap((model, modelIndex) => {
         if (!isVisibleCatalogModel(providerId, model)) {
@@ -629,7 +443,6 @@ export function ModelPicker() {
       return a.modelIndex - b.modelIndex;
     });
   const otherProviderEntries = providerEntries
-    .filter(() => !isTrial)
     .filter(([providerId]) => isOtherProvider(providerId))
     .map(
       ([providerId, models]) =>
@@ -646,32 +459,8 @@ export function ModelPicker() {
   );
   const recentModelCandidates = effectiveRecentModels.flatMap<RecentModelEntry>(
     (recentModel) => {
-      if (
-        recentModel.provider === "claude-code" &&
-        settings.proModelUsage === "api-key"
-      )
-        return [];
-      if (useClaudeCode && !recentModel.customModelId) {
-        const catalogModel = modelsByProviders?.[recentModel.provider]?.find(
-          (model) => model.apiName === recentModel.name,
-        );
-        const id = claudeCodeModelId(recentModel.provider, {
-          ...catalogModel,
-          apiName: recentModel.name,
-          displayName: recentModel.name,
-        });
-        const model =
-          id &&
-          pickerCatalog?.["claude-code"]?.find(
-            (candidate) =>
-              claudeCodeModelIdentity(
-                candidate.apiName,
-                availableClaudeModels,
-              ) === claudeCodeModelIdentity(id, availableClaudeModels),
-          );
-        if (model)
-          return [{ type: "cloud" as const, providerId: "claude-code", model }];
-      }
+      // Retired claude-code entries from stored recents never resolve.
+      if (recentModel.provider === "claude-code") return [];
       if (recentModel.provider === "ollama") {
         if (ollamaError) {
           return [];
@@ -741,28 +530,22 @@ export function ModelPicker() {
     },
   );
   const recentModelEntries = recentModelCandidates.filter(
-    (entry, index, entries) => {
-      if (
-        isTrial &&
-        (entry.type !== "cloud" || entry.providerId !== "claude-code")
-      )
-        return false;
-      return (
-        entry.type !== "cloud" ||
-        entry.providerId !== "claude-code" ||
-        entries.findIndex(
-          (candidate) =>
-            candidate.type === "cloud" &&
-            candidate.providerId === "claude-code" &&
-            candidate.model.apiName === entry.model.apiName,
-        ) === index
-      );
-    },
+    (entry, index, entries) =>
+      entries.findIndex(
+        (candidate) =>
+          candidate.type === entry.type &&
+          candidate.providerId === entry.providerId &&
+          (candidate.type !== "cloud" ||
+            entry.type !== "cloud" ||
+            ((candidate as { model: LanguageModel }).model.apiName ===
+              (entry as { model: LanguageModel }).model.apiName &&
+              (candidate as { model: LanguageModel }).model.id ===
+                (entry as { model: LanguageModel }).model.id)),
+      ) === index,
   );
   const recentModelsWithoutStaleEntries = effectiveRecentModels.filter(
     (recentModel) => {
-      if (recentModel.provider === "claude-code")
-        return !!settings?.enableClaudeCodeSubscription;
+      if (recentModel.provider === "claude-code") return false;
       if (recentModel.provider === "ollama") {
         return (
           Boolean(ollamaError) ||
@@ -818,28 +601,13 @@ export function ModelPicker() {
     return provider?.name ?? providerId;
   };
 
-  // Non-Pro users can still use any cloud model with their own API key, so a
-  // model is only locked when neither Dyad Pro nor a provider key can run it.
-  // Custom and local providers are never locked: Pro doesn't unlock those.
-  // While settings/env vars are still loading we can't tell whether a key
-  // exists, so fail open rather than flash a lock at env-var-configured users.
-  const isModelLocked = (providerId: string, model: LanguageModel) => {
-    if (providerId === "claude-code" && useClaudeCode) return false;
-    if (
-      settings &&
-      usesChatGPTSubscription(
-        { provider: providerId, name: model.apiName },
-        settings,
-        subscription.data ?? { connected: false, models: [] },
-      )
-    )
-      return false;
-    if (
-      settingsLoading ||
-      dyadProEnabled ||
-      providerId === "auto" ||
-      (providerId === "openai" && subscription.isLoading)
-    ) {
+  // Opencode-style: a cloud model is locked when no API key (settings or
+  // env) is configured for its provider. Custom and local providers are
+  // never locked. While settings/env vars are still loading we can't tell
+  // whether a key exists, so fail open rather than flash a lock at
+  // env-var-configured users.
+  const isModelLocked = (providerId: string, _model: LanguageModel) => {
+    if (settingsLoading) {
       return false;
     }
     const provider = providers?.find((p) => p.id === providerId);
@@ -853,31 +621,6 @@ export function ModelPicker() {
     });
     setOpen(false);
     setUnlockTarget({ providerId, model });
-  };
-
-  const handleUnlockAllClick = () => {
-    posthog.capture("model-picker:upgrade-click", {
-      source: "unlock-all-footer",
-    });
-    ipc.system.openExternalUrl(
-      `${DYAD_PRO_UPGRADE_BASE_URL}&utm_campaign=model-picker-unlock-all`,
-    );
-    setOpen(false);
-  };
-
-  const handleUnlockDialogUpgradeClick = () => {
-    if (!unlockTarget) {
-      return;
-    }
-    posthog.capture("model-picker:upgrade-click", {
-      source: "locked-model-dialog",
-      provider: unlockTarget.providerId,
-      model: unlockTarget.model.apiName,
-    });
-    ipc.system.openExternalUrl(
-      `${DYAD_PRO_UPGRADE_BASE_URL}&utm_campaign=model-picker-locked-model`,
-    );
-    setUnlockTarget(null);
   };
 
   const handleUnlockDialogOwnKeyClick = () => {
@@ -895,9 +638,6 @@ export function ModelPicker() {
     });
   };
 
-  const unlockTargetIsFreeModel = unlockTarget
-    ? isFreeOpenRouterModelName(unlockTarget.model.apiName)
-    : false;
   const unlockTargetProviderName = unlockTarget
     ? getProviderDisplayName(unlockTarget.providerId)
     : "";
@@ -909,12 +649,6 @@ export function ModelPicker() {
   ) => {
     if (isModelLocked(providerId, model)) {
       handleLockedModelClick(providerId, model);
-      return;
-    }
-    if (
-      isFreeProLanguageModel(providerId, model.apiName) &&
-      freeModelQuota.isQuotaExceeded
-    ) {
       return;
     }
 
@@ -946,43 +680,13 @@ export function ModelPicker() {
       provider: providerId,
       customModelId: model.type === "custom" ? model.id : undefined,
     };
-    const isClaudeCode = providerId === "claude-code";
-    const isSelected =
-      isClaudeCode && normalizedSelectedModel.provider === "claude-code"
-        ? claudeCodeModelIdentity(
-            normalizedSelectedModel.name,
-            availableClaudeModels,
-          ) === claudeCodeModelIdentity(model.apiName, availableClaudeModels)
-        : isSameModel(normalizedSelectedModel, modelRef);
+    const isSelected = isSameModel(normalizedSelectedModel, modelRef);
     const modelKey = `${providerId}-${model.apiName}-${modelRef.customModelId ?? "catalog"}`;
     const isLocked = isModelLocked(providerId, model);
-    const isAutoProviderRow = providerId === "auto";
-    const isFreeProRow = isFreeProLanguageModel(providerId, model.apiName);
     const isFreeProviderRow =
       providerId === "openrouter" && isFreeOpenRouterModelName(model.apiName);
-    const isAutoOpenRouterFreeRow =
-      isAutoProviderRow && model.apiName === "free";
-    const shouldShowDataSharingDisclosure =
-      isFreeProRow ||
-      isFreeProviderRow ||
-      isAutoOpenRouterFreeRow ||
-      (isAutoProviderRow &&
-        model.apiName === "auto" &&
-        !dyadProEnabled &&
-        isProviderSetup("openrouter"));
-    const freeProResetTimeLabel = freeModelQuota.resetTime
-      ? new Intl.DateTimeFormat(undefined, {
-          hour: "numeric",
-          minute: "2-digit",
-          timeZoneName: "short",
-        }).format(new Date(freeModelQuota.resetTime))
-      : null;
-    const freeProQuotaLabel =
-      freeModelQuota.isLoading && !freeModelQuota.quotaStatus
-        ? "Loading"
-        : freeModelQuota.error
-          ? "Unavailable"
-          : `${freeModelQuota.messagesRemaining}/${freeModelQuota.messagesLimit} left`;
+    // Free OpenRouter models may train on your data; surface that inline.
+    const shouldShowDataSharingDisclosure = isFreeProviderRow;
     const effortSettings = getEffortSettings(model);
     const currentEffort = isSelected
       ? selectedEffortLevel
@@ -994,29 +698,18 @@ export function ModelPicker() {
         }).effortLevel;
     const effortLabel = formatEffortLevel(currentEffort);
     const compactEffortLabel = formatCompactEffortLevel(currentEffort);
-    const chatGPTSubscriptionEligible = usesChatGPTSubscription(
-      { provider: providerId, name: model.apiName },
-      settings,
-      subscription.data ?? { connected: false, models: [] },
-    );
-    const subscriptionEligible = isClaudeCode || chatGPTSubscriptionEligible;
-    const subscriptionLabel = isClaudeCode ? "Claude Code" : "ChatGPT plan";
     const unlockedAriaLabel = [
       model.displayName,
-      subscriptionEligible ? subscriptionLabel : null,
-      showPrice && !subscriptionEligible && model.dollarSigns != null
+      showPrice && model.dollarSigns != null
         ? model.dollarSigns === 0
           ? "Free"
           : `Price: ${(model.dollarSigns / 2).toFixed(1)}`
         : null,
-      model.tag && !isFreeProRow ? model.tag : null,
+      model.tag,
       isSelected ? "Selected" : null,
-      isFreeProRow ? freeProQuotaLabel : null,
       shouldShowDataSharingDisclosure ? "Data sharing" : null,
-      !isClaudeCode ? `Effort: ${effortLabel}` : null,
-      isClaudeCode
-        ? "Press Enter to select"
-        : "Press Enter to select; press Right Arrow to configure effort",
+      `Effort: ${effortLabel}`,
+      "Press Enter to select; press Right Arrow to configure effort",
     ]
       .filter(Boolean)
       .join(". ");
@@ -1024,12 +717,7 @@ export function ModelPicker() {
     const rowContent = (
       <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
         <span className="min-w-0 flex items-center gap-2">
-          {!isAutoProviderRow && (
-            <ProviderIcon
-              providerId={isClaudeCode ? "anthropic" : providerId}
-              apiName={model.apiName}
-            />
-          )}
+          <ProviderIcon providerId={providerId} apiName={model.apiName} />
           <span className="min-w-0 flex flex-col items-start">
             <span
               title={model.description ? undefined : model.displayName}
@@ -1043,28 +731,8 @@ export function ModelPicker() {
           </span>
         </span>
         <span className="flex min-w-fit items-center gap-1.5">
-          {subscriptionEligible && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span
-                    className={cn(PILL_CLASS, "bg-primary/10 text-primary")}
-                  >
-                    {subscriptionLabel}
-                  </span>
-                }
-              />
-              <TooltipContent>
-                {isClaudeCode
-                  ? "Uses your connected Claude Code subscription"
-                  : "Uses your connected ChatGPT subscription"}
-              </TooltipContent>
-            </Tooltip>
-          )}
-          {showPrice && !subscriptionEligible && (
-            <PriceBadge dollarSigns={model.dollarSigns} />
-          )}
-          {model.tag && !isFreeProRow && (
+          {showPrice && <PriceBadge dollarSigns={model.dollarSigns} />}
+          {model.tag && (
             <span
               className={cn(
                 PILL_CLASS,
@@ -1080,23 +748,6 @@ export function ModelPicker() {
           )}
           {isSelected && (
             <CheckIcon className="size-3.5 text-primary shrink-0" />
-          )}
-          {isFreeProRow && (
-            <span
-              className={cn(
-                PILL_CLASS,
-                freeModelQuota.isQuotaExceeded
-                  ? "bg-destructive/10 text-destructive"
-                  : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-              )}
-              title={
-                freeProResetTimeLabel
-                  ? `Resets at ${freeProResetTimeLabel}`
-                  : undefined
-              }
-            >
-              {freeProQuotaLabel}
-            </span>
           )}
           {shouldShowDataSharingDisclosure && (
             <Tooltip>
@@ -1118,7 +769,7 @@ export function ModelPicker() {
               </TooltipContent>
             </Tooltip>
           )}
-          {!isLocked && !isClaudeCode && (
+          {!isLocked && (
             <>
               <span
                 data-effort-level
@@ -1150,32 +801,16 @@ export function ModelPicker() {
       "data-locked": isLocked || undefined,
       className: cn(
         "relative px-2 py-1.5",
-        isFreeProRow &&
-          freeModelQuota.isQuotaExceeded &&
-          "opacity-60 cursor-default",
         isSelected &&
           "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
       ),
     };
 
-    const item = isClaudeCode ? (
+    const item = isLocked ? (
       <DropdownMenuItem
         key={modelKey}
         {...commonProps}
-        aria-label={`${unlockedAriaLabel}.`}
-        onClick={() => handleCloudModelSelect(providerId, model)}
-      >
-        {rowContent}
-      </DropdownMenuItem>
-    ) : isLocked ? (
-      <DropdownMenuItem
-        key={modelKey}
-        {...commonProps}
-        aria-label={
-          isFreeProviderRow
-            ? `${model.displayName} — requires an API key from ${getProviderDisplayName(providerId)}`
-            : `${model.displayName} — requires Dyad Pro or an API key from ${getProviderDisplayName(providerId)}`
-        }
+        aria-label={`${model.displayName} — requires an API key from ${getProviderDisplayName(providerId)}`}
         onClick={() => handleLockedModelClick(providerId, model)}
       >
         {rowContent}
@@ -1185,7 +820,6 @@ export function ModelPicker() {
         key={modelKey}
         {...commonProps}
         aria-label={`${unlockedAriaLabel}.`}
-        disabled={isFreeProRow && freeModelQuota.isQuotaExceeded}
         hideChevron
         onMouseDown={(event) => {
           if (!isEffortChevronTarget(event.target)) {
@@ -1214,7 +848,7 @@ export function ModelPicker() {
       item
     );
 
-    if (isLocked || isClaudeCode) {
+    if (isLocked) {
       return itemWithTooltip;
     }
 
@@ -1258,11 +892,7 @@ export function ModelPicker() {
     const provider = providers?.find((p) => p.id === providerId);
     const providerDisplayName = getProviderDisplayName(providerId);
     const providerState =
-      provider?.type === "custom"
-        ? "Custom provider"
-        : provider?.type === "cloud" && !provider.secondary && dyadProEnabled
-          ? "Pro"
-          : null;
+      provider?.type === "custom" ? "Custom provider" : null;
 
     return (
       <DropdownMenuSub key={providerId}>
@@ -1282,9 +912,6 @@ export function ModelPicker() {
           <div className="flex flex-col items-start w-full">
             <div className="flex items-center gap-2">
               <span>{providerDisplayName}</span>
-              {provider?.type === "cloud" &&
-                !provider?.secondary &&
-                dyadProEnabled && <span className={PRO_PILL_CLASS}>Pro</span>}
               {provider?.type === "custom" && (
                 <span className={cn(PILL_CLASS, "bg-amber-500 text-white")}>
                   Custom
@@ -1524,10 +1151,7 @@ export function ModelPicker() {
   const pendingModelName = pendingBackend
     ? getModelDisplayName(pendingBackend.model)
     : "";
-  const newChatExplanation =
-    pendingBackend?.model.provider === "claude-code"
-      ? "Claude Code can’t continue this conversation."
-      : `This conversation uses Claude Code and can’t continue with ${pendingModelName}.`;
+  const newChatExplanation = `This conversation can't continue with ${pendingModelName}.`;
 
   return (
     <>
@@ -1580,362 +1204,161 @@ export function ModelPicker() {
           data-testid="model-picker"
           title={modelDisplayName}
         >
-          <span className="truncate">
-            {getModelDisplayName() === "Auto" && (
-              <>
-                <span className="text-xs text-muted-foreground/70">
-                  Model:
-                </span>{" "}
-              </>
-            )}
-            {modelDisplayName}
-          </span>
+          <span className="truncate">{modelDisplayName}</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent className={MODEL_MENU_WIDTH_CLASS} align="start">
-          <ClaudeCodeSubscriptionMenu
-            enabled={
-              !!settings.enableClaudeCodeSubscription &&
-              settings.proModelUsage !== "api-key" &&
-              settings.proModelUsage !== "pro"
-            }
-            onEnabledChange={(enabled) =>
-              updateSettings({
-                enableClaudeCodeSubscription: enabled,
-                ...(enabled ? { proModelUsage: "subscription" as const } : {}),
-              })
-            }
-            connected={
-              !!claudeStatus.data?.connected && !!claudeStatus.data?.compatible
-            }
-            detail={
-              claudeStatus.data?.detail ?? "Checking Claude Code connection…"
-            }
-            onRefresh={() => {
-              void queryClient
-                .fetchQuery({
-                  queryKey: queryKeys.system.claudeCodeStatus,
-                  queryFn: () => ipc.chat.claudeCodeStatus({ force: true }),
-                  staleTime: 0,
-                })
-                .catch((error) => showError(error));
-              void claudeModels.refetch();
-            }}
-            catalogMessage={
-              claudeModels.isError
-                ? "Could not load Claude Code suggestions. Try refreshing."
-                : undefined
-            }
-          />
-          <SubscriptionModelMenu>
-            <DropdownMenuSeparator />
-            {/* Trial user upgrade banner */}
-            {isTrial && (
-              <>
-                <div className="px-2 py-3 bg-gradient-to-r from-indigo-50 to-sky-50 dark:from-indigo-950/50 dark:to-sky-950/50">
-                  <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-2">
-                    Upgrade from Dyad Pro trial to unlock more models.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="cursor-pointer w-full bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white border-indigo-600"
-                    onClick={() => {
-                      ipc.system.openExternalUrl(
-                        "https://academy.dyad.sh/subscription",
-                      );
-                      setOpen(false);
-                    }}
-                  >
-                    Upgrade to Dyad Pro
-                  </Button>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger
+              className="w-full font-normal"
+              {...NAVIGATION_SUBMENU_HOVER_PROPS}
+            >
+              <span>All models</span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent
+              className={cn(MODEL_MENU_WIDTH_CLASS, SCROLL_AREA_CLASS)}
+              data-testid="more-models-submenu"
+              data-catalog-loading={loading}
+            >
+              <DropdownMenuLabel>All models</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {loading ? (
+                <div className="text-xs text-center py-2 text-muted-foreground">
+                  Loading cloud models...
                 </div>
-                <DropdownMenuSeparator />
-                {/* Trial users only see the auto model */}
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger
-                    hideChevron
-                    data-model-provider="auto"
-                    data-model-name="auto"
-                    aria-label={`Auto. Trial. Selected. Effort: ${formatEffortLevel(trialAutoEffort)}. Press Enter to select; press Right Arrow to configure effort.`}
-                    className="relative py-2 bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary"
-                    onMouseDown={(event) => {
-                      if (!isEffortChevronTarget(event.target)) {
-                        event.preventBaseUIHandler();
+              ) : !hasCloudCatalogEntries ? (
+                <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                  {cloudCatalogError
+                    ? "Couldn’t load cloud models"
+                    : "No cloud models available"}
+                </div>
+              ) : (
+                <>
+                  {(() => {
+                    const nodes: ReactNode[] = [];
+                    cloudCatalogGroups.forEach(({ tier, entries }, index) => {
+                      if (index > 0) {
+                        nodes.push(
+                          <DropdownMenuSeparator
+                            key={`tier-sep-${tier.label}`}
+                          />,
+                        );
                       }
-                    }}
-                    onClick={(event) => {
-                      if (!isEffortChevronTarget(event.target)) {
-                        event.preventBaseUIHandler();
-                        void onModelSelect({
-                          model: { name: "auto", provider: "auto" },
-                          catalogModel: autoModels.find(
-                            (model) => model.apiName === "auto",
-                          ),
-                        });
-                        setOpen(false);
-                      }
-                    }}
-                  >
-                    <div className="flex justify-between items-center w-full gap-2">
-                      <span className="text-[13px]">Auto</span>
-                      <span className="ml-auto flex items-center gap-1.5">
-                        <span
-                          className={cn(
-                            PILL_CLASS,
-                            "bg-primary/10 text-primary",
-                          )}
-                        >
-                          Trial
-                        </span>
-                        <CheckIcon className="size-3.5 text-primary shrink-0" />
-                        <span
-                          data-effort-level
-                          className="text-xs text-muted-foreground"
-                          title={`Reasoning effort: ${formatEffortLevel(trialAutoEffort)}`}
-                        >
-                          {formatCompactEffortLevel(trialAutoEffort)}
-                        </span>
-                        <span
-                          data-effort-chevron
-                          aria-hidden="true"
-                          className="-mr-1 flex size-6 items-center justify-center rounded-sm hover:bg-muted"
-                        >
-                          <ChevronRightIcon className="size-4" />
-                        </span>
-                      </span>
-                    </div>
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-52">
-                    <DropdownMenuLabel>Effort</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {trialAutoEffortSettings.possibleEffortLevels.map(
-                      (effortLevel) => (
-                        <DropdownMenuItem
-                          key={effortLevel}
-                          onClick={() => {
-                            void onModelSelect({
-                              model: { name: "auto", provider: "auto" },
-                              catalogModel: trialAutoModel,
-                              effortLevel,
-                              rememberEffort: true,
-                            });
-                            setOpen(false);
-                          }}
-                        >
-                          <span>{formatEffortLevel(effortLevel)}</span>
-                          {effortLevel ===
-                            trialAutoEffortSettings.defaultEffortLevel && (
-                            <span className="text-xs text-muted-foreground">
-                              (default)
-                            </span>
-                          )}
-                          {effortLevel === trialAutoEffort && (
-                            <CheckIcon className="ml-auto size-3.5 text-primary" />
-                          )}
-                        </DropdownMenuItem>
-                      ),
-                    )}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-              </>
-            )}
-
-            {/* Non-trial users get a compact quick switcher. */}
-            {(!isTrial || useClaudeCode) && (
-              <>
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger
-                    className="w-full font-normal"
-                    {...NAVIGATION_SUBMENU_HOVER_PROPS}
-                  >
-                    <span>All models</span>
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent
-                    className={cn(MODEL_MENU_WIDTH_CLASS, SCROLL_AREA_CLASS)}
-                    data-testid="more-models-submenu"
-                    data-catalog-loading={loading}
-                  >
-                    <DropdownMenuLabel>All models</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {loading ? (
-                      <div className="text-xs text-center py-2 text-muted-foreground">
-                        Loading cloud models...
-                      </div>
-                    ) : !hasCloudCatalogEntries ? (
-                      <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                        {cloudCatalogError
-                          ? "Couldn’t load cloud models"
-                          : "No cloud models available"}
-                      </div>
-                    ) : (
-                      <>
-                        {(() => {
-                          const nodes: ReactNode[] = [];
-                          cloudCatalogGroups.forEach(
-                            ({ tier, entries }, index) => {
-                              if (index > 0) {
-                                nodes.push(
-                                  <DropdownMenuSeparator
-                                    key={`tier-sep-${tier.label}`}
-                                  />,
-                                );
-                              }
-                              nodes.push(
-                                <div
-                                  key={`tier-label-${tier.label}`}
-                                  className="flex items-center gap-1.5 px-2 pt-1.5 pb-1"
-                                >
-                                  <span className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground shrink-0">
-                                    {tier.label}
-                                  </span>
-                                  <span
-                                    aria-hidden="true"
-                                    className="size-[3px] rounded-full bg-muted-foreground/50 shrink-0"
-                                  />
-                                  <span className="text-[11px] text-muted-foreground/85 truncate">
-                                    {tier.caption}
-                                  </span>
-                                </div>,
-                              );
-                              entries.forEach(({ providerId, model }) => {
-                                nodes.push(
-                                  renderCloudModelItem({ providerId, model }),
-                                );
-                              });
-                            },
-                          );
-                          return nodes;
-                        })()}
-                      </>
-                    )}
-                    <DropdownMenuSeparator />
-                    <div
-                      className="px-2 pt-1.5 pb-1 text-[10px] uppercase tracking-wider font-medium text-muted-foreground"
-                      data-testid="local-providers-section"
-                    >
-                      Local providers
-                    </div>
-                    {renderLocalProviderSubmenu({
-                      providerId: "ollama",
-                      label: "Ollama",
-                      models: ollamaModels,
-                      loading: ollamaLoading,
-                      error: ollamaError,
-                    })}
-                    {renderLocalProviderSubmenu({
-                      providerId: "lmstudio",
-                      label: "LM Studio",
-                      models: lmStudioModels,
-                      loading: lmStudioLoading,
-                      error: lmStudioError,
-                    })}
-                    {otherProviderEntries.length > 0 && (
-                      <>
-                        <DropdownMenuSeparator />
+                      nodes.push(
                         <div
-                          className="px-2 pt-1.5 pb-1 text-[10px] uppercase tracking-wider font-medium text-muted-foreground"
-                          data-testid="cloud-providers-section"
+                          key={`tier-label-${tier.label}`}
+                          className="flex items-center gap-1.5 px-2 pt-1.5 pb-1"
                         >
-                          Cloud providers
-                        </div>
-                        {otherProviderEntries.map(([providerId, models]) =>
-                          renderProviderSubmenu(providerId, models),
-                        )}
-                      </>
-                    )}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-
-                <DropdownMenuSeparator />
-
-                {loading ? (
-                  <div className="text-xs text-center py-2 text-muted-foreground">
-                    Loading models...
+                          <span className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground shrink-0">
+                            {tier.label}
+                          </span>
+                          <span
+                            aria-hidden="true"
+                            className="size-[3px] rounded-full bg-muted-foreground/50 shrink-0"
+                          />
+                          <span className="text-[11px] text-muted-foreground/85 truncate">
+                            {tier.caption}
+                          </span>
+                        </div>,
+                      );
+                      entries.forEach(({ providerId, model }) => {
+                        nodes.push(renderCloudModelItem({ providerId, model }));
+                      });
+                    });
+                    return nodes;
+                  })()}
+                </>
+              )}
+              <DropdownMenuSeparator />
+              <div
+                className="px-2 pt-1.5 pb-1 text-[10px] uppercase tracking-wider font-medium text-muted-foreground"
+                data-testid="local-providers-section"
+              >
+                Local providers
+              </div>
+              {renderLocalProviderSubmenu({
+                providerId: "ollama",
+                label: "Ollama",
+                models: ollamaModels,
+                loading: ollamaLoading,
+                error: ollamaError,
+              })}
+              {renderLocalProviderSubmenu({
+                providerId: "lmstudio",
+                label: "LM Studio",
+                models: lmStudioModels,
+                loading: lmStudioLoading,
+                error: lmStudioError,
+              })}
+              {otherProviderEntries.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <div
+                    className="px-2 pt-1.5 pb-1 text-[10px] uppercase tracking-wider font-medium text-muted-foreground"
+                    data-testid="cloud-providers-section"
+                  >
+                    Cloud providers
                   </div>
-                ) : (
-                  <>
-                    {!isTrial && autoModels.length > 0 && (
-                      <>
-                        {autoModels.map((model) =>
-                          renderCloudModelItem({
-                            providerId: "auto",
-                            model,
-                            showPrice: false,
-                          }),
-                        )}
-                        {recentModelEntries.length > 0 && (
-                          <DropdownMenuSeparator />
-                        )}
-                      </>
-                    )}
+                  {otherProviderEntries.map(([providerId, models]) =>
+                    renderProviderSubmenu(providerId, models),
+                  )}
+                </>
+              )}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
 
-                    {cloudCatalogError && autoModels.length === 0 && (
-                      <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                        Couldn’t load cloud models
-                      </div>
-                    )}
+          <DropdownMenuSeparator />
 
-                    {recentModelEntries.length > 0 && (
-                      <>
-                        <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                          Recent
-                        </DropdownMenuLabel>
-                        {recentModelEntries.map((entry) => {
-                          if (entry.type === "cloud") {
-                            return renderCloudModelItem({
-                              providerId: entry.providerId,
-                              model: entry.model,
-                            });
-                          }
-                          if (entry.type === "local") {
-                            return renderLocalModelItem(
-                              entry.providerId,
-                              entry.model,
-                            );
-                          }
-                          return (
-                            <DropdownMenuItem
-                              key={`${entry.providerId}-${entry.modelName}-loading`}
-                              disabled
-                              aria-label={`${entry.modelName}. Loading local model`}
-                              className="py-1.5"
-                            >
-                              <ProviderIcon providerId={entry.providerId} />
-                              <span className="min-w-0 truncate text-[13px]">
-                                {entry.modelName}
-                              </span>
-                              <span className="ml-auto text-xs text-muted-foreground">
-                                Loading...
-                              </span>
-                            </DropdownMenuItem>
-                          );
-                        })}
-                      </>
-                    )}
-                  </>
-                )}
-              </>
-            )}
+          {loading ? (
+            <div className="text-xs text-center py-2 text-muted-foreground">
+              Loading models...
+            </div>
+          ) : (
+            <>
+              {cloudCatalogError && (
+                <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                  Couldn’t load cloud models
+                </div>
+              )}
 
-            {/* Upgrade footer for non-Pro users */}
-            {!isTrial && !dyadProEnabled && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  data-testid="model-picker-unlock-all"
-                  className="px-2 py-2 bg-gradient-to-r from-indigo-50 to-sky-50 dark:from-indigo-950/50 dark:to-sky-950/50 focus:from-indigo-100 focus:to-sky-100 dark:focus:from-indigo-950 dark:focus:to-sky-950"
-                  onClick={handleUnlockAllClick}
-                >
-                  <div className="flex items-center gap-2 w-full">
-                    <SparklesIcon className="size-3.5 text-indigo-600 dark:text-indigo-300 shrink-0" />
-                    <span className="text-[13px] font-medium text-indigo-700 dark:text-indigo-300">
-                      Unlock all models with Dyad Pro
-                    </span>
-                  </div>
-                </DropdownMenuItem>
-              </>
-            )}
-          </SubscriptionModelMenu>
+              {recentModelEntries.length > 0 && (
+                <>
+                  <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Recent
+                  </DropdownMenuLabel>
+                  {recentModelEntries.map((entry) => {
+                    if (entry.type === "cloud") {
+                      return renderCloudModelItem({
+                        providerId: entry.providerId,
+                        model: entry.model,
+                      });
+                    }
+                    if (entry.type === "local") {
+                      return renderLocalModelItem(
+                        entry.providerId,
+                        entry.model,
+                      );
+                    }
+                    return (
+                      <DropdownMenuItem
+                        key={`${entry.providerId}-${entry.modelName}-loading`}
+                        disabled
+                        aria-label={`${entry.modelName}. Loading local model`}
+                        className="py-1.5"
+                      >
+                        <ProviderIcon providerId={entry.providerId} />
+                        <span className="min-w-0 truncate text-[13px]">
+                          {entry.modelName}
+                        </span>
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          Loading...
+                        </span>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </>
+              )}
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -1952,57 +1375,21 @@ export function ModelPicker() {
           className="sm:max-w-md"
           data-testid="unlock-model-dialog"
         >
-          {/* Free models aren't a Pro feature, so don't sell Pro for them —
-              they just need the user's own (free) provider API key. */}
-          {unlockTargetIsFreeModel ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>
-                  Use {unlockTarget?.model.displayName} with your own{" "}
-                  {unlockTargetProviderName} API key
-                </DialogTitle>
-                <DialogDescription>
-                  Free models run through your own {unlockTargetProviderName}{" "}
-                  account. Add an API key in provider settings to use this
-                  model.
-                </DialogDescription>
-              </DialogHeader>
-              <Button
-                className="cursor-pointer w-full"
-                onClick={handleUnlockDialogOwnKeyClick}
-              >
-                Add {unlockTargetProviderName} API key
-              </Button>
-            </>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>
-                  Unlock {unlockTarget?.model.displayName} with Dyad Pro
-                </DialogTitle>
-                <DialogDescription>
-                  Dyad Pro gives you {unlockTarget?.model.displayName} and every
-                  other leading AI model with one subscription — no API keys
-                  needed.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex flex-col gap-3">
-                <Button
-                  className="cursor-pointer w-full"
-                  onClick={handleUnlockDialogUpgradeClick}
-                >
-                  Get Dyad Pro
-                </Button>
-                <button
-                  type="button"
-                  className="cursor-pointer text-sm text-primary hover:underline underline-offset-4"
-                  onClick={handleUnlockDialogOwnKeyClick}
-                >
-                  Or use your own {unlockTargetProviderName} API key
-                </button>
-              </div>
-            </>
-          )}
+          <DialogHeader>
+            <DialogTitle>
+              Use {unlockTarget?.model.displayName} with your own{" "}
+              {unlockTargetProviderName} API key
+            </DialogTitle>
+            <DialogDescription>
+              Add an API key in provider settings to use this model.
+            </DialogDescription>
+          </DialogHeader>
+          <Button
+            className="cursor-pointer w-full"
+            onClick={handleUnlockDialogOwnKeyClick}
+          >
+            Add {unlockTargetProviderName} API key
+          </Button>
         </DialogContent>
       </Dialog>
     </>

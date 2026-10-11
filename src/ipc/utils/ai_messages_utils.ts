@@ -19,16 +19,13 @@ export function shouldNormalizeToolCallIdsForOpenAIResponses(
   selectedProviderId: string,
   selectedModelName: string,
 ): boolean {
-  return (
-    // Auto normally starts with OpenAI Responses. Prefer keeping that common
-    // path working across provider switches; a rare same-turn fallback to
-    // Gemini may lose its encoded thought signature after normalization.
-    (selectedProviderId === "auto" && selectedModelName === "auto") ||
-    usesOpenAIResponsesApi({
-      provider: selectedProviderId,
-      name: selectedModelName,
-    })
-  );
+  // OpenAI Responses models carry encoded thought signatures; prefer keeping
+  // that common path working across provider switches. A rare same-turn
+  // fallback to Gemini may lose its signature after normalization.
+  return usesOpenAIResponsesApi({
+    provider: selectedProviderId,
+    name: selectedModelName,
+  });
 }
 
 function normalizeToolCallId(toolCallId: string): string {

@@ -5,6 +5,11 @@ import { defineContract, createClient } from "../contracts/core";
 // Language Model Schemas
 // =============================================================================
 
+export const CustomProviderApiProtocolSchema = z.enum(["openai", "anthropic"]);
+export type CustomProviderApiProtocol = z.infer<
+  typeof CustomProviderApiProtocolSchema
+>;
+
 export const LanguageModelProviderSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -14,6 +19,9 @@ export const LanguageModelProviderSchema = z.object({
   secondary: z.boolean().optional(),
   envVarName: z.string().optional(),
   apiBaseUrl: z.string().optional(),
+  // Wire protocol for custom providers. Absent (legacy rows, builtin
+  // providers) means OpenAI-compatible.
+  apiProtocol: CustomProviderApiProtocolSchema.optional(),
   type: z.enum(["custom", "local", "cloud"]),
   isCustom: z.boolean().optional(),
 });
@@ -67,6 +75,8 @@ export const CreateCustomLanguageModelProviderParamsSchema = z.object({
   id: z.string(),
   name: z.string(),
   apiBaseUrl: z.string(),
+  // Defaults to "openai" when omitted (existing callers, legacy rows).
+  apiProtocol: CustomProviderApiProtocolSchema.optional(),
   envVarName: z.string().optional(),
 });
 

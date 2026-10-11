@@ -119,11 +119,10 @@ describe("useChatMode with an active chat", () => {
     mocks.isQuotaLoading = false;
     mocks.settings = makeSettings({
       defaultChatMode: "build",
-      enableDyadPro: true,
       providerSettings: {
-        auto: { apiKey: { value: "dyad-pro-key" } },
+        openai: { apiKey: { value: "test-openai-key" } },
       },
-      selectedModel: { provider: "auto", name: "free-pro" },
+      selectedModel: { provider: "openai", name: "gpt-5" },
     });
     mocks.updateSettings.mockReset();
   });
@@ -143,7 +142,7 @@ describe("useChatMode with an active chat", () => {
     });
 
     expect(result.current.storedChatMode).toBeNull();
-    expect(result.current.selectedMode).toBe("local-agent");
+    expect(result.current.selectedMode).toBe("build");
   });
 
   it("preserves an explicitly stored Build mode for compatibility repair", () => {

@@ -5,37 +5,25 @@ import log from "electron-log";
 
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { ProviderApiKeyValidationProvider } from "@/ipc/types";
-import { readEffectiveSettings } from "@/main/settings";
 import {
   findInvalidProviderApiKeyCharacter,
   formatInvalidProviderApiKeyMessage,
   normalizeProviderApiKeyInput,
 } from "@/lib/providerApiKey";
-import type { ModelSelection, UserSettings } from "@/lib/schemas";
-import { createDyadEngine } from "@/ipc/utils/llm_engine_provider";
 import { fastTextOutput } from "@/ipc/utils/stream_text_utils";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
-import { getDyadEngineBaseUrl } from "@/ipc/utils/dyad_engine_url";
 import { getTestFetchOption } from "@/ipc/utils/test_fetch_override";
 import { getOpenRouterAppAttributionHeaders } from "@/ipc/utils/openrouter_attribution";
-import { GPT_5_6_LUNA_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 
 const logger = log.scope("provider_api_key_validation");
 
 const VALIDATION_PROMPT =
   "What number is after four? Reply with only the number.";
 const VALIDATION_TIMEOUT_MS = 20_000;
-const DYAD_VALIDATION_MODEL = {
-  provider: "openai",
-  name: GPT_5_6_LUNA_MODEL_NAME,
-  effortLevel: "low",
-} satisfies ModelSelection;
-
 const PROVIDER_DISPLAY_NAMES: Record<ProviderApiKeyValidationProvider, string> =
   {
     google: "Google",
     openrouter: "OpenRouter",
-    auto: "Dyad",
   };
 
 export async function validateProviderApiKey({
@@ -87,8 +75,8 @@ export async function validateProviderApiKey({
       output: fastTextOutput(),
       model: await createValidationModel(provider, normalizedApiKey),
       // Responses counts reasoning tokens against the output budget too.
-      maxOutputTokens: provider === "auto" ? 128 : 8,
-      temperature: provider === "auto" ? undefined : 0,
+      maxOutputTokens: 8,
+      temperature: 0,
       maxRetries: 0,
       abortSignal: controller.signal,
       onError: ({ error }) => {
@@ -136,34 +124,6 @@ async function createValidationModel(
         ...getTestFetchOption(),
       });
       return openrouter("openrouter/free");
-    }
-    case "auto": {
-      const settings = await readEffectiveSettings();
-      const dyad = createDyadEngine({
-        apiKey,
-        modelSelection: DYAD_VALIDATION_MODEL,
-        baseURL: getDyadEngineBaseUrl(),
-        ...getTestFetchOption(),
-        dyadOptions: {
-          enableLazyEdits: false,
-          enableSmartFilesContext: false,
-          enableWebSearch: false,
-        },
-        settings: {
-          ...settings,
-          enableDyadPro: true,
-          providerSettings: {
-            ...settings.providerSettings,
-            auto: {
-              ...settings.providerSettings?.auto,
-              apiKey: { value: apiKey },
-            },
-          },
-        } satisfies UserSettings,
-      });
-      return dyad.responses(DYAD_VALIDATION_MODEL.name, {
-        providerId: DYAD_VALIDATION_MODEL.provider,
-      });
     }
   }
 }

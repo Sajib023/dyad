@@ -11,7 +11,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { useCustomLanguageModelProvider } from "@/hooks/useCustomLanguageModelProvider";
-import type { LanguageModelProvider } from "@/ipc/types";
+import type {
+  CustomProviderApiProtocol,
+  LanguageModelProvider,
+} from "@/ipc/types";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 interface CreateCustomProviderDialogProps {
   isOpen: boolean;
@@ -28,6 +32,8 @@ export function CreateCustomProviderDialog({
 }: CreateCustomProviderDialogProps) {
   const [id, setId] = useState("");
   const [name, setName] = useState("");
+  const [apiProtocol, setApiProtocol] =
+    useState<CustomProviderApiProtocol>("openai");
   const [apiBaseUrl, setApiBaseUrl] = useState("");
   const [envVarName, setEnvVarName] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -43,12 +49,14 @@ export function CreateCustomProviderDialog({
         : editingProvider.id || "";
       setId(cleanId);
       setName(editingProvider.name || "");
+      setApiProtocol(editingProvider.apiProtocol ?? "openai");
       setApiBaseUrl(editingProvider.apiBaseUrl || "");
       setEnvVarName(editingProvider.envVarName || "");
     } else if (!isOpen) {
       // Reset form when dialog closes
       setId("");
       setName("");
+      setApiProtocol("openai");
       setApiBaseUrl("");
       setEnvVarName("");
       setErrorMessage("");
@@ -68,6 +76,7 @@ export function CreateCustomProviderDialog({
           id: cleanId,
           name: name.trim(),
           apiBaseUrl: apiBaseUrl.trim(),
+          apiProtocol,
           envVarName: envVarName.trim() || undefined,
         });
       } else {
@@ -75,6 +84,7 @@ export function CreateCustomProviderDialog({
           id: id.trim(),
           name: name.trim(),
           apiBaseUrl: apiBaseUrl.trim(),
+          apiProtocol,
           envVarName: envVarName.trim() || undefined,
         });
       }
@@ -82,6 +92,7 @@ export function CreateCustomProviderDialog({
       // Reset form
       setId("");
       setName("");
+      setApiProtocol("openai");
       setApiBaseUrl("");
       setEnvVarName("");
 
@@ -145,6 +156,43 @@ export function CreateCustomProviderDialog({
             />
             <p className="text-xs text-muted-foreground">
               The name that will be displayed in the UI.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>API Protocol</Label>
+            <RadioGroup
+              value={apiProtocol}
+              onValueChange={(value: string) =>
+                setApiProtocol(value as CustomProviderApiProtocol)
+              }
+              className="flex gap-4"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem
+                  value="openai"
+                  id="protocol-openai"
+                  disabled={isLoading}
+                />
+                <Label htmlFor="protocol-openai" className="font-normal">
+                  OpenAI-compatible
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem
+                  value="anthropic"
+                  id="protocol-anthropic"
+                  disabled={isLoading}
+                />
+                <Label htmlFor="protocol-anthropic" className="font-normal">
+                  Anthropic-compatible
+                </Label>
+              </div>
+            </RadioGroup>
+            <p className="text-xs text-muted-foreground">
+              OpenAI-compatible covers OpenAI-style chat APIs (Ollama, vLLM,
+              OpenRouter, …). Choose Anthropic-compatible for Messages-API
+              endpoints.
             </p>
           </div>
 

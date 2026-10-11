@@ -16,18 +16,12 @@ import { INSPIRATION_PROMPTS } from "@/prompts/inspiration_prompts";
 
 import { ImportAppButton } from "@/components/ImportAppButton";
 import { FeaturedAppShowcase } from "@/components/FeaturedAppShowcase";
-import { Button } from "@/components/ui/button";
 
 import type { FileAttachment } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
-import { hasDyadProKey, type ChatMode } from "@/lib/schemas";
-import {
-  FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
-  isFreeProBuildModeCombination,
-} from "@/lib/freeProModel";
+import { type ChatMode } from "@/lib/schemas";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
-import { RefreshCw, Sparkles, Zap } from "lucide-react";
-import { ipc } from "@/ipc/types";
+import { RefreshCw, Zap } from "lucide-react";
 import {
   useFirstPromptSaga,
   useFirstPromptSend,
@@ -52,7 +46,6 @@ export default function HomePage() {
   const { settings, envVars, loading: isSettingsLoading } = useSettings();
   const { isAnyProviderSetup, isLoading: isLoadingLanguageModelProviders } =
     useLanguageModelProviders();
-  const hasDyadProApiKey = settings ? hasDyadProKey(settings) : false;
   const hasConfiguredAiProvider =
     !isLoadingLanguageModelProviders && isAnyProviderSetup();
   const homeInitialChatMode = useMemo<ChatMode | undefined>(() => {
@@ -98,20 +91,11 @@ export default function HomePage() {
   );
 
   // Honor a manually picked mode (e.g. "plan") on submit; otherwise fall back
-  // to the effective default so it still tracks provider/quota state. Apply the
-  // Free Pro fallback for an invalid build-mode + free-pro-model combination.
+  // to the effective default.
   const homeSubmitChatMode = useMemo<ChatMode | undefined>(() => {
-    const selected =
-      hasManuallySelectedChatMode && settings?.selectedChatMode
-        ? settings.selectedChatMode
-        : homeInitialChatMode;
-    if (
-      settings &&
-      isFreeProBuildModeCombination(settings.selectedModel, selected)
-    ) {
-      return FREE_PRO_MODEL_FALLBACK_CHAT_MODE;
-    }
-    return selected;
+    return hasManuallySelectedChatMode && settings?.selectedChatMode
+      ? settings.selectedChatMode
+      : homeInitialChatMode;
   }, [settings, homeInitialChatMode, hasManuallySelectedChatMode]);
 
   const handleSubmit = useCallback(
@@ -193,19 +177,6 @@ export default function HomePage() {
                 variant="outline"
                 size="sm"
               />
-              {!hasDyadProApiKey && (
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    ipc.system.openExternalUrl(
-                      "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=home-upgrade-to-pro",
-                    )
-                  }
-                >
-                  <Sparkles aria-hidden="true" />
-                  Upgrade to Pro
-                </Button>
-              )}
             </div>
           </div>
           <HomeChatInput
@@ -213,38 +184,36 @@ export default function HomePage() {
             disabled={isCheckingProviders}
           />
 
-          {!isSettingsLoading &&
-            !isLoadingLanguageModelProviders &&
-            !hasDyadProApiKey && (
-              <div className="-mt-2 flex justify-end px-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    posthog.capture("home:setup-pill:click");
-                    sendFirstPrompt({
-                      type: "ARM_FOR_SETUP",
-                      payload: {
-                        prompt: inputValue,
-                        attachments,
-                        selectedApp: selectedApp ?? undefined,
-                        chatMode: homeSubmitChatMode,
-                        isChatModeExplicit: hasManuallySelectedChatMode,
-                      },
-                    });
-                  }}
-                  className={
-                    hasConfiguredAiProvider
-                      ? "flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground hover:underline"
-                      : "flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 hover:underline"
-                  }
-                >
-                  <Zap aria-hidden="true" className="size-3.5" />
-                  {hasConfiguredAiProvider
-                    ? "Manage AI setup"
-                    : "Connect AI to build — takes a minute"}
-                </button>
-              </div>
-            )}
+          {!isSettingsLoading && !isLoadingLanguageModelProviders && (
+            <div className="-mt-2 flex justify-end px-4">
+              <button
+                type="button"
+                onClick={() => {
+                  posthog.capture("home:setup-pill:click");
+                  sendFirstPrompt({
+                    type: "ARM_FOR_SETUP",
+                    payload: {
+                      prompt: inputValue,
+                      attachments,
+                      selectedApp: selectedApp ?? undefined,
+                      chatMode: homeSubmitChatMode,
+                      isChatModeExplicit: hasManuallySelectedChatMode,
+                    },
+                  });
+                }}
+                className={
+                  hasConfiguredAiProvider
+                    ? "flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground hover:underline"
+                    : "flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 hover:underline"
+                }
+              >
+                <Zap aria-hidden="true" className="size-3.5" />
+                {hasConfiguredAiProvider
+                  ? "Manage AI setup"
+                  : "Connect AI to build — takes a minute"}
+              </button>
+            </div>
+          )}
 
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             {randomPrompts.map((item) => (

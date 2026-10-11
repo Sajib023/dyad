@@ -13,7 +13,6 @@ import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 import { toast } from "sonner";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
-import { AiAccessBanner } from "./ProBanner";
 import type {
   ThemeGenerationMode,
   ThemeGenerationModel,
@@ -327,10 +326,9 @@ export function AIGeneratorTab({
             tailored to your design style.
           </p>
           <p className="text-xs text-muted-foreground/70 mt-2">
-            Pro-only feature
+            Unavailable in this build (needs Dyad cloud)
           </p>
         </div>
-        <AiAccessBanner />
       </div>
     );
   }

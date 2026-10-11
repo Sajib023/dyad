@@ -43,6 +43,13 @@ export function registerLanguageModelHandlers() {
       params: CreateCustomLanguageModelProviderParams,
     ): Promise<LanguageModelProvider> => {
       const { id, name, apiBaseUrl, envVarName } = params;
+      const apiProtocol = params.apiProtocol ?? "openai";
+      if (apiProtocol !== "openai" && apiProtocol !== "anthropic") {
+        throw new DyadError(
+          'Provider protocol must be "openai" or "anthropic"',
+          DyadErrorKind.Validation,
+        );
+      }
 
       // Validation
       if (!id) {
@@ -86,6 +93,7 @@ export function registerLanguageModelHandlers() {
         id: CUSTOM_PROVIDER_PREFIX + id,
         name,
         api_base_url: apiBaseUrl,
+        api_protocol: apiProtocol,
         env_var_name: envVarName || null,
       });
 
@@ -94,6 +102,7 @@ export function registerLanguageModelHandlers() {
         id,
         name,
         apiBaseUrl,
+        apiProtocol,
         envVarName,
         type: "custom",
       };
@@ -249,6 +258,13 @@ export function registerLanguageModelHandlers() {
       params: CreateCustomLanguageModelProviderParams,
     ): Promise<LanguageModelProvider> => {
       const { id, name, apiBaseUrl, envVarName } = params;
+      const apiProtocol = params.apiProtocol ?? "openai";
+      if (apiProtocol !== "openai" && apiProtocol !== "anthropic") {
+        throw new DyadError(
+          'Provider protocol must be "openai" or "anthropic"',
+          DyadErrorKind.Validation,
+        );
+      }
 
       if (!id) {
         throw new DyadError(
@@ -292,6 +308,7 @@ export function registerLanguageModelHandlers() {
             id: CUSTOM_PROVIDER_PREFIX + id,
             name,
             api_base_url: apiBaseUrl,
+            api_protocol: apiProtocol,
             env_var_name: envVarName || null,
           })
           .where(
@@ -310,6 +327,7 @@ export function registerLanguageModelHandlers() {
           id,
           name,
           apiBaseUrl,
+          apiProtocol,
           envVarName,
           type: "custom" as const,
         };

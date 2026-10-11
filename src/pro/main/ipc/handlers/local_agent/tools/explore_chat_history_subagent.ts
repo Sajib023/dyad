@@ -14,8 +14,6 @@ import {
   fastTextOutput,
 } from "@/ipc/utils/stream_text_utils";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
-import type { UserSettings } from "@/lib/schemas";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { searchChatsTool } from "./search_chats";
 import { readChatTool } from "./read_chat";
 import type { AgentContext, ToolDefinition } from "./types";
@@ -63,7 +61,6 @@ export async function runExploreChatHistorySubagent({
     ctx.chatId,
     ctx.inferenceSettings,
   );
-  assertHistoryExplorerAvailable(storedSettings, ctx);
   const auxiliaryModel = SUBAGENT_MODEL;
   const selectedModel = await resolveModelSelection({
     model: auxiliaryModel,
@@ -201,25 +198,6 @@ function finalReport({
     registry,
     reason: "the sub-agent did not submit an accepted report",
   });
-}
-
-function assertHistoryExplorerAvailable(
-  settings: UserSettings,
-  ctx: AgentContext,
-): void {
-  // Toolset exclusion is not an execution-time security boundary — re-check.
-  if (!ctx.isDyadPro || !settings.enableDyadPro) {
-    throw new DyadError(
-      "explore_chat_history requires Dyad Pro",
-      DyadErrorKind.Precondition,
-    );
-  }
-  if (!settings.providerSettings?.auto?.apiKey) {
-    throw new DyadError(
-      "explore_chat_history requires a Dyad Pro auto provider API key",
-      DyadErrorKind.Precondition,
-    );
-  }
 }
 
 function formatProgress(counts: RetrievalCounts): string {

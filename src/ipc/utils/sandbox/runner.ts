@@ -34,15 +34,47 @@ function isTestRuntime(): boolean {
 }
 
 function resolveSandboxWorkerPath(): string | undefined {
-  const workerPath = path.join(__dirname, "sandbox_worker.js");
-  if (fs.existsSync(workerPath)) {
-    return workerPath;
+  const candidates = [
+    // Packaged Electron (`.vite/build`).
+    path.join(__dirname, "sandbox_worker.js"),
+    // Running from source (`src/ipc/utils/sandbox` -> repo root `dist/`).
+    // Covers the web self-host server (`web/server/register.cjs`) and vitest.
+    path.join(process.cwd(), "dist", "sandbox_worker.js"),
+    path.resolve(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      "..",
+      "dist",
+      "sandbox_worker.js",
+    ),
+    path.resolve(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      ".vite",
+      "build",
+      "sandbox_worker.js",
+    ),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    } catch {
+      // ignore and try next candidate
+    }
   }
   if (isTestRuntime()) {
     return undefined;
   }
   throw new DyadError(
-    "Sandbox worker script is missing from the application build.",
+    `Sandbox worker script is missing from the application build. Tried:` +
+      `\n  ${candidates.join("\n  ")}` +
+      `. Build it with: npm run build:web-workers`,
     DyadErrorKind.Internal,
   );
 }

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useLanguageModelProviders } from "./useLanguageModelProviders";
 
 const mocks = vi.hoisted(() => ({
+  providerSettings: {} as Record<string, { apiKey: { value: string } }>,
   selectedModel: {
     provider: "ollama",
     name: "llama3",
@@ -42,7 +43,7 @@ vi.mock("./useSettings", () => ({
   useSettings: () => ({
     envVars: {},
     settings: {
-      providerSettings: {},
+      providerSettings: mocks.providerSettings,
       selectedModel: mocks.selectedModel,
     },
   }),
@@ -50,6 +51,7 @@ vi.mock("./useSettings", () => ({
 
 describe("useLanguageModelProviders", () => {
   beforeEach(() => {
+    mocks.providerSettings = {};
     mocks.subscriptionLoading = false;
     mocks.subscription = {
       connected: false,
@@ -67,18 +69,18 @@ describe("useLanguageModelProviders", () => {
     };
   });
 
-  it("waits for an existing subscription before deciding provider readiness", () => {
-    mocks.selectedModel = { provider: "openai", name: "subscription-model" };
+  it("decides provider readiness from API keys without subscriptions", () => {
+    mocks.selectedModel = { provider: "openai", name: "gpt-5" };
     mocks.useQueryResult.isLoading = false;
-    mocks.subscriptionLoading = true;
+    // No key anywhere: not ready, even with a connected subscription.
     mocks.subscription.connected = true;
     const { result, rerender } = renderHook(() => useLanguageModelProviders());
-    expect(result.current.isLoading).toBe(true);
     expect(result.current.isAnyProviderSetup()).toBe(false);
-    mocks.subscriptionLoading = false;
+    // Adding the provider key makes it ready.
+    mocks.providerSettings = { openai: { apiKey: { value: "k" } } };
     rerender();
-    expect(result.current.isLoading).toBe(false);
     expect(result.current.isAnyProviderSetup()).toBe(true);
+    expect(result.current.isProviderSetup("openai")).toBe(true);
   });
   it("treats a selected Ollama model as a configured provider while provider data is loading", () => {
     const { result } = renderHook(() => useLanguageModelProviders());
@@ -96,18 +98,15 @@ describe("useLanguageModelProviders", () => {
 
     expect(result.current.isAnyProviderSetup()).toBe(true);
   });
-  it("waits for sign-in and a supported model before resuming onboarding", () => {
-    mocks.selectedModel = { provider: "auto", name: "auto" };
+  it("ignores subscription state when deciding readiness", () => {
+    mocks.selectedModel = { provider: "openai", name: "gpt-5" };
     mocks.subscription.connected = true;
-    const { result, rerender } = renderHook(() => useLanguageModelProviders());
-    expect(result.current.isAnyProviderSetup()).toBe(true);
-    mocks.selectedModel = { provider: "openai", name: "subscription-model" };
     mocks.subscription.pending = true;
-    rerender();
+    const { result, rerender } = renderHook(() => useLanguageModelProviders());
     expect(result.current.isAnyProviderSetup()).toBe(false);
     mocks.subscription.pending = false;
     rerender();
-    expect(result.current.isAnyProviderSetup()).toBe(true);
+    expect(result.current.isAnyProviderSetup()).toBe(false);
     expect(result.current.isProviderSetup("openai")).toBe(false);
     mocks.subscription.connected = false;
     rerender();

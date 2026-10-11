@@ -1,64 +1,35 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ipc, type FreeAgentQuotaStatus } from "@/ipc/types";
-import { queryKeys } from "@/lib/queryKeys";
-import { useSettings } from "./useSettings";
-import { isDyadProEnabled } from "@/lib/schemas";
+import type { FreeAgentQuotaStatus } from "@/ipc/types";
 import { FREE_AGENT_QUOTA_LIMIT } from "@/lib/free_agent_quota_limit";
 
-const THIRTY_MINUTES_IN_MS = 30 * 60 * 1000;
-// In test mode, use very short staleTime for faster E2E tests
-const STALE_TIME_MS = 30_000;
-const TEST_STALE_TIME_MS = 500;
+// Retired: the Basic Agent per-window quota no longer exists (BYOK-only,
+// opencode-style — every request uses the user's own key). This stub keeps
+// the hook's shape so all call sites compile and behave as "unlimited".
+const UNLIMITED_STATUS: FreeAgentQuotaStatus = {
+  messagesUsed: 0,
+  messagesLimit: FREE_AGENT_QUOTA_LIMIT,
+  isQuotaExceeded: false,
+  windowStartTime: null,
+  resetTime: null,
+  hoursUntilReset: null,
+};
 
 /**
  * Hook to get the free agent quota status for non-Pro users.
  *
- * - Only fetches for non-Pro users (Pro users have unlimited access)
- * - Refetches every 30 minutes to update the UI when quota resets
- * - Returns quota status including messages used, limit, and time until reset
+ * Retired: always reports a fresh, never-exceeded quota.
  */
 export function useFreeAgentQuota() {
-  const { settings } = useSettings();
-  const queryClient = useQueryClient();
-  const isPro = settings ? isDyadProEnabled(settings) : false;
-  const isTestMode = settings?.isTestMode ?? false;
-
-  const {
-    data: quotaStatus,
-    isLoading,
-    error,
-  } = useQuery<FreeAgentQuotaStatus, Error, FreeAgentQuotaStatus>({
-    queryKey: queryKeys.freeAgentQuota.status,
-    queryFn: () => ipc.freeAgentQuota.getFreeAgentQuotaStatus(),
-    // Only fetch for non-Pro users
-    enabled: !isPro && !!settings,
-    // Refetch periodically to check for quota reset
-    refetchInterval: THIRTY_MINUTES_IN_MS,
-    // Consider stale after 30 seconds (500ms in test mode for faster E2E tests)
-    staleTime: isTestMode ? TEST_STALE_TIME_MS : STALE_TIME_MS,
-    // Don't retry on error (e.g., if there's an issue with the DB)
-    retry: false,
-  });
-
-  const invalidateQuota = () => {
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.freeAgentQuota.status,
-    });
-  };
-
   return {
-    quotaStatus,
-    isLoading,
-    error,
-    invalidateQuota,
+    quotaStatus: UNLIMITED_STATUS,
+    isLoading: false,
+    error: null,
+    invalidateQuota: () => {},
     // Convenience properties for easier consumption
-    isQuotaExceeded: quotaStatus?.isQuotaExceeded ?? false,
-    messagesUsed: quotaStatus?.messagesUsed ?? 0,
-    messagesLimit: quotaStatus?.messagesLimit ?? FREE_AGENT_QUOTA_LIMIT,
-    messagesRemaining: quotaStatus
-      ? Math.max(0, quotaStatus.messagesLimit - quotaStatus.messagesUsed)
-      : FREE_AGENT_QUOTA_LIMIT,
-    hoursUntilReset: quotaStatus?.hoursUntilReset ?? null,
-    resetTime: quotaStatus?.resetTime ?? null,
+    isQuotaExceeded: false,
+    messagesUsed: 0,
+    messagesLimit: FREE_AGENT_QUOTA_LIMIT,
+    messagesRemaining: FREE_AGENT_QUOTA_LIMIT,
+    hoursUntilReset: null,
+    resetTime: null,
   };
 }

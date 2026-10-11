@@ -1,0 +1,1 @@
+ALTER TABLE `language_model_providers` ADD `api_protocol` text DEFAULT 'openai';

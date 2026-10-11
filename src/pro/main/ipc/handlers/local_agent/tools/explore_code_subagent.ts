@@ -15,8 +15,6 @@ import {
   fastTextOutput,
 } from "@/ipc/utils/stream_text_utils";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
-import type { UserSettings } from "@/lib/schemas";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { grepTool } from "./grep";
 import { listFilesTool } from "./list_files";
 import { readFileTool } from "./read_file";
@@ -117,7 +115,6 @@ export async function runExploreCodeSubagent({
     ctx.chatId,
     ctx.inferenceSettings,
   );
-  assertDyadValueAvailable(storedSettings);
   const auxiliaryModel = SUBAGENT_MODEL;
   const selectedModel = await resolveModelSelection({
     model: auxiliaryModel,
@@ -373,15 +370,6 @@ function renderFinalReport({
     observations,
     warnings,
   });
-}
-
-function assertDyadValueAvailable(settings: UserSettings): void {
-  if (!settings.enableDyadPro || !settings.providerSettings?.auto?.apiKey) {
-    throw new DyadError(
-      "explore_code sub-agent requires Dyad Pro with an auto provider API key",
-      DyadErrorKind.Precondition,
-    );
-  }
 }
 
 function createReadOnlyToolBudget(): ReadOnlyToolBudget {

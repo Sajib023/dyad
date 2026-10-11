@@ -81,7 +81,7 @@ afterEach(() => {
 });
 
 describe("remote language model catalog", () => {
-  it("keeps a nonempty remote auto-model list authoritative", async () => {
+  it("filters the retired auto provider even when the remote serves it", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -107,9 +107,7 @@ describe("remote language model catalog", () => {
       await import("./remote_language_model_catalog");
     const catalog = await getBuiltinLanguageModelCatalog();
 
-    expect(catalog.modelsByProvider.auto).toEqual([
-      expect.objectContaining({ apiName: "remote-auto" }),
-    ]);
+    expect(catalog.modelsByProvider.auto).toBeUndefined();
   });
 
   it("uses the fallback catalog on cold start when the remote fetch fails", async () => {

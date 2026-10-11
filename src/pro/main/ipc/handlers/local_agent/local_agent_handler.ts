@@ -1,12 +1,10 @@
 import { recordShellReviewOutcome } from "./shell_review_history";
 import { shellExecutionGuidance } from "@/shared/shell_capability";
-import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
 import {
   getInferenceSource,
   type InferenceSource,
 } from "@/shared/inference_source";
 import type { ExternalModelAdmission } from "@/ipc/services/external_model_admission";
-import type { AutoModelCandidates } from "@/ipc/services/auto_model_candidates";
 /**
  * Local Agent v2 Handler
  * Main orchestrator for tool-based agent mode with parallel execution
@@ -27,7 +25,6 @@ import log from "electron-log";
 import { db } from "@/db";
 import { chats, messages, type AiMessagesJsonV6 } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { ClaudeCodeModel } from "@/ipc/services/claude_code/model";
 import { startTurnStallWatchdog } from "./turn_stall_watchdog";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { buildMcpAutoApprove } from "./mcp_auto_consent";
@@ -36,13 +33,11 @@ import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
 
 import {
-  isDyadProEnabled,
   isBasicAgentMode,
   type ModelSelection,
   type UserSettings,
 } from "@/lib/schemas";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
-import { isFreeProModel } from "@/lib/freeProModel";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
@@ -601,9 +596,7 @@ export async function handleLocalAgentStream(
     messageOverride,
     settingsOverride,
     modelSelectionOverride,
-    autoModelCandidates,
     externalModelAdmission,
-    freeModelMode,
     toolProfile = "agent",
     preCommitHookAvailable = false,
     referencedApps = [],
@@ -633,9 +626,7 @@ export async function handleLocalAgentStream(
     messageOverride?: ModelMessage[];
     settingsOverride?: UserSettings;
     modelSelectionOverride?: ModelSelection;
-    autoModelCandidates?: AutoModelCandidates;
     externalModelAdmission?: ExternalModelAdmission;
-    freeModelMode?: boolean;
     /** Fail-closed tool and orchestration surface for this mode. */
     toolProfile?: "agent" | "build";
     /** Snapshot shared by the prompt and toolset for this writable turn. */
@@ -792,30 +783,6 @@ export async function handleLocalAgentStream(
       : await resolveDefaultModelSelection(storedSettings);
   settings = { ...storedSettings, selectedModel };
 
-  // Check Pro status or Basic Agent mode
-  // Basic Agent mode allows non-Pro users with quota (quota check is done in chat_stream_handlers)
-  // Read-only mode (ask mode) is allowed for all users without Pro
-  if (
-    !buildMode &&
-    !readOnly &&
-    !planModeOnly &&
-    !isDyadProEnabled(settings) &&
-    selectedModel.provider !== "claude-code" &&
-    !isBasicAgentMode(settings)
-  ) {
-    const errorMessage =
-      referencedApps.length > 0
-        ? "Referencing other apps (@app:Name) in local-agent mode requires Dyad Pro. Please enable Dyad Pro in Settings → Pro."
-        : "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.";
-    safeSend(event.sender, "chat:response:error", {
-      chatId: req.chatId,
-      invocationRef: req.invocationRef,
-      streamId: req.streamId,
-      error: errorMessage,
-    });
-    return false;
-  }
-
   let appPath = getDyadAppPath(chat.app.path);
 
   const maybePerformPendingCompaction = async (options?: {
@@ -929,7 +896,6 @@ export async function handleLocalAgentStream(
   const synthesizedExplorerThreadIds = new Set<string>();
   const mutationTurnId = `local-agent-turn:${placeholderMessageId}`;
   let rootMutationOwner: MutationActivityOwner | undefined;
-  let claudeRuntime: ClaudeCodeModel | undefined;
   const stallWatchdog = startTurnStallWatchdog(req.chatId);
 
   try {
@@ -939,18 +905,8 @@ export async function handleLocalAgentStream(
       settings.selectedModel,
       settings,
       selectedModel,
-      { chatId: req.chatId, autoModelCandidates, externalModelAdmission },
+      { chatId: req.chatId, externalModelAdmission },
     );
-    if (modelClient.model instanceof ClaudeCodeModel) {
-      claudeRuntime = modelClient.model;
-      stallWatchdog.setPhase("starting Claude Code");
-      await claudeRuntime.prepare(abortController.signal);
-      const refreshed = await loadChat();
-      if (!refreshed?.app)
-        throw new DyadError("App no longer exists", DyadErrorKind.NotFound);
-      chat = refreshed;
-      appPath = getDyadAppPath(chat.app.path);
-    }
     currentInferenceSource = () =>
       getInferenceSource(
         modelClient.getRuntimeModel?.() ?? runtimeModel,
@@ -988,10 +944,9 @@ export async function handleLocalAgentStream(
     const referencedAppsMap = new Map(
       referencedApps.map((ref) => [ref.appName.toLowerCase(), ref.appPath]),
     );
-    const effectiveFreeModelMode =
-      freeModelMode ?? isFreeProModel(settings.selectedModel);
+
     const ctx: AgentContext = {
-      persistQuestionnaireRecovery: selectedModel.provider === "claude-code",
+      persistQuestionnaireRecovery: false,
       inferenceSettings: settings,
       mutationActivityOwner: (rootMutationOwner = createMutationActivityOwner({
         appId: chat.app.id,
@@ -1041,25 +996,20 @@ export async function handleLocalAgentStream(
       appBlueprintQuestionnaireCompleted: hasCompletedAppBlueprintQuestionnaire(
         chat.messages,
       ),
-      isDyadPro: isDyadProEnabled(settings),
+      isDyadPro: false,
       canUseExplorerSubagent:
         !buildMode &&
-        isDyadProEnabled(settings) &&
         settings.enableExplorerSubagent !== false &&
         settings.agentToolConsents?.spawn_agent !== "never",
       canUseImplementerSubagent:
         !buildMode &&
-        isDyadProEnabled(settings) &&
         isImplementerSubagentEnabled(settings) &&
         !readOnly &&
         !planModeOnly,
       canUseAdvancedSubagentTools:
-        !buildMode &&
-        isDyadProEnabled(settings) &&
-        settings.enableAdvancedSubagents === true,
+        !buildMode && settings.enableAdvancedSubagents === true,
       runTypeScriptForWholeProject:
         settings.runTypeScriptForWholeProject === true,
-      freeModelMode: effectiveFreeModelMode,
       onXmlStream: (accumulatedXml: string) => {
         // Stream the in-progress tool XML as a sidecar preview overlay.
         // Does NOT enter `message.content` or `fullResponse` — the patch
@@ -1139,7 +1089,6 @@ export async function handleLocalAgentStream(
       readOnly,
       planModeOnly,
       basicAgentMode: !readOnly && !planModeOnly && isBasicAgentMode(settings),
-      freeModelMode: effectiveFreeModelMode,
       enableAppBlueprint:
         settings.enableAppBlueprint && chat.app.needsAppBlueprint,
     };
@@ -1254,11 +1203,6 @@ export async function handleLocalAgentStream(
       }
     }
     const allTools: ToolSet = { ...agentTools, ...mcpToolsForRegistration };
-    if (modelClient.model instanceof ClaudeCodeModel) {
-      modelClient.model.bindTools(allTools, ctx, () =>
-        pendingUserMessages.splice(0).flat(),
-      );
-    }
     const registeredToolNames = new Set(Object.keys(allTools));
     if (ctx.shellReviewContext) {
       ctx.refreshShellReviewTools = () =>
@@ -2091,10 +2035,7 @@ export async function handleLocalAgentStream(
       }
 
       // Track total steps for step limit detection
-      totalStepsExecuted +=
-        modelClient.model instanceof ClaudeCodeModel
-          ? modelClient.model.stepsExecuted
-          : steps.length;
+      totalStepsExecuted += steps.length;
 
       if (responseMessages.length > 0 || allInjectedMessages.length > 0) {
         // For mid-turn compaction, slice off pre-compaction messages
@@ -2432,7 +2373,6 @@ export async function handleLocalAgentStream(
       !buildMode &&
       workspaceChanged &&
       !hitStepLimit &&
-      isDyadProEnabled(settings) &&
       settings.enableAutoReview === true;
 
     // Send completion
@@ -2492,19 +2432,13 @@ export async function handleLocalAgentStream(
       chatId: req.chatId,
       invocationRef: req.invocationRef,
       streamId: req.streamId,
-      error:
-        error instanceof SubscriptionBillingError
-          ? error.serialize()
-          : `Error: ${getErrorMessageWithDetails(error)}`,
+      error: `Error: ${getErrorMessageWithDetails(error)}`,
       warningMessages:
         warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
     });
     return false; // Error - don't consume quota
   } finally {
     stallWatchdog.stop();
-    await claudeRuntime
-      ?.close()
-      .catch((error) => logger.error("Claude admission cleanup failed", error));
     await persistCompactionFallback();
     endTurnFinalization(mutationTurnId);
     // If an in-progress tool's XML preview was overlaid in the renderer

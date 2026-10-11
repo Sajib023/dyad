@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { streamText } from "ai";
 import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 
-import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   drainChatSearchIndexOnce,
   resetChatSearchIndexerForTesting,
@@ -117,7 +116,7 @@ describe("runExploreChatHistorySubagent", () => {
     harness.dispose();
   });
 
-  it("uses the engine helper model with BYO for history exploration", async () => {
+  it("keeps the caller's billing settings for history exploration", async () => {
     const ctx = makeAgentContext({ isDyadPro: true });
     ctx.inferenceSettings = {
       ...mocks.readSettings(),
@@ -127,7 +126,7 @@ describe("runExploreChatHistorySubagent", () => {
     await runExploreChatHistorySubagent({ query: "find save discussion", ctx });
     expect(mocks.getModelClient).toHaveBeenCalledWith(
       { provider: "openai", name: SMALL_MODEL_NAME },
-      expect.objectContaining({ proModelUsage: "pro" }),
+      expect.objectContaining({ proModelUsage: "api-key" }),
       expect.objectContaining({ provider: "openai", name: SMALL_MODEL_NAME }),
     );
   });
@@ -155,47 +154,6 @@ describe("runExploreChatHistorySubagent", () => {
       );
     },
   );
-
-  it("throws a Precondition error when the context is not Dyad Pro", async () => {
-    // makeAgentContext defaults to isDyadPro: false.
-    await expect(
-      runExploreChatHistorySubagent({
-        query: "auth decision",
-        ctx: makeAgentContext(),
-      }),
-    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
-    expect(mocks.streamText).not.toHaveBeenCalled();
-  });
-
-  it("throws a Precondition error when settings do not enable Dyad Pro", async () => {
-    mocks.readSettings.mockReturnValue({
-      enableDyadPro: false,
-      providerSettings: {
-        auto: { apiKey: { value: "dyad-pro-key" } },
-      },
-    });
-    await expect(
-      runExploreChatHistorySubagent({
-        query: "auth decision",
-        ctx: makeAgentContext({ isDyadPro: true }),
-      }),
-    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
-    expect(mocks.streamText).not.toHaveBeenCalled();
-  });
-
-  it("throws a Precondition error when the auto provider API key is missing", async () => {
-    mocks.readSettings.mockReturnValue({
-      enableDyadPro: true,
-      providerSettings: {},
-    });
-    await expect(
-      runExploreChatHistorySubagent({
-        query: "auth decision",
-        ctx: makeAgentContext({ isDyadPro: true }),
-      }),
-    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
-    expect(mocks.streamText).not.toHaveBeenCalled();
-  });
 
   it("exposes exactly search_chats, read_chat, and submit_report to the child model", async () => {
     await runExploreChatHistorySubagent({

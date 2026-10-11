@@ -33,7 +33,6 @@ import { useIsMac } from "@/hooks/useChatModeToggle";
 import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 import { HelpDialog } from "@/components/HelpDialog";
-import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner";
 import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
 import {
   FirstPromptProvider,
@@ -199,7 +198,6 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
                 <TitleBar />
                 <AppSidebar />
                 <div className="flex h-screenish min-w-0 flex-1 flex-col overflow-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background">
-                  <SubscriptionStatusBanner />
                   <div
                     id="layout-main-content-container"
                     className="flex min-h-0 w-full flex-1 overflow-x-hidden"

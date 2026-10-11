@@ -1,6 +1,7 @@
 // startProxy.js – helper to launch proxy.js as a worker
 
 import { Worker } from "worker_threads";
+import fs from "node:fs";
 import path from "path";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -10,6 +11,42 @@ import {
 } from "../../../shared/ports";
 
 const logger = log.scope("start_proxy_server");
+
+/**
+ * The proxy worker lives at `<repo>/worker/proxy_server.js`.
+ *
+ * Packaged, `__dirname` is `.vite/build`, so
+ * `../.. /worker/proxy_server.js` lands on the app root. Running from source
+ * (vitest, or the web self-host server via `web/server/register.cjs`),
+ * `__dirname` is `src/ipc/utils`, so the same expression points at the
+ * nonexistent `src/worker/proxy_server.js` and every preview fails with
+ * "Cannot find module". Resolve against every layout and use the first file
+ * that exists.
+ */
+export function resolveProxyWorkerPath(): string {
+  const candidates = [
+    // Packaged Electron (`.vite/build` -> app root).
+    path.resolve(__dirname, "..", "..", "worker", "proxy_server.js"),
+    // Running from source (`src/ipc/utils` -> repo root).
+    path.resolve(__dirname, "..", "..", "..", "worker", "proxy_server.js"),
+    // Self-hosted Docker / repo-root cwd (`/app`).
+    path.join(process.cwd(), "worker", "proxy_server.js"),
+  ];
+  const found = candidates.find((candidate) => {
+    try {
+      return fs.existsSync(candidate);
+    } catch {
+      return false;
+    }
+  });
+  if (!found) {
+    throw new DyadError(
+      `Preview proxy worker not found. Tried:\n  ${candidates.join("\n  ")}`,
+      DyadErrorKind.Internal,
+    );
+  }
+  return found;
+}
 
 export async function startProxy(
   targetOrigin: string,
@@ -32,20 +69,17 @@ export async function startProxy(
   const fallbackPortStart = getProxyFallbackPortStart();
   logger.info("Starting proxy on port", port);
 
-  const worker = new Worker(
-    path.resolve(__dirname, "..", "..", "worker", "proxy_server.js"),
-    {
-      workerData: {
-        targetOrigin,
-        hostname: opts.hostname,
-        port,
-        fallbackPortStart,
-        maxPortAttempts: PROXY_FALLBACK_MAX_ATTEMPTS,
-        fixedHeaders,
-        authBootstrapToken,
-      },
+  const worker = new Worker(resolveProxyWorkerPath(), {
+    workerData: {
+      targetOrigin,
+      hostname: opts.hostname,
+      port,
+      fallbackPortStart,
+      maxPortAttempts: PROXY_FALLBACK_MAX_ATTEMPTS,
+      fixedHeaders,
+      authBootstrapToken,
     },
-  );
+  });
 
   let started = false;
   let reportedError = false;

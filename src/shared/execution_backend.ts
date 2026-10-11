@@ -3,6 +3,7 @@ import type {
   ModelSelection,
   UserSettings,
 } from "@/lib/schemas";
+import { DEFAULT_MODEL } from "@/lib/schemas";
 export type ExecutionBackend = "dyad" | "claude-code";
 
 export function executionBackendForModel(
@@ -55,10 +56,7 @@ export function modelForChatBackend(
     | undefined,
 ): LargeLanguageModel {
   if (chat?.modelSelection) return chat.modelSelection;
-  const selected = settings?.selectedModel ?? {
-    provider: "auto",
-    name: "auto",
-  };
+  const selected = settings?.selectedModel ?? { ...DEFAULT_MODEL };
   // Disabling the experiment preserves existing chats, but must not strand
   // newly created chats on the now-disabled remembered global selection.
   if (
@@ -69,7 +67,7 @@ export function modelForChatBackend(
     return (
       settings?.recentModels?.find(
         (model) => model.provider !== "claude-code",
-      ) ?? { provider: "auto", name: "auto" }
+      ) ?? { ...DEFAULT_MODEL }
     );
   if (
     !chat ||
@@ -83,6 +81,6 @@ export function modelForChatBackend(
     ) ??
     (chat.executionBackend === "claude-code"
       ? { provider: "claude-code", name: "sonnet" }
-      : { provider: "auto", name: "auto" })
+      : { ...DEFAULT_MODEL })
   );
 }

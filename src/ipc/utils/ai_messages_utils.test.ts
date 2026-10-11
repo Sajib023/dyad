@@ -810,7 +810,7 @@ describe("shouldNormalizeToolCallIdsForOpenAIResponses", () => {
     ["azure", "gpt-5", false],
     ["auto", "value", true],
     ["auto", "balanced", true],
-    ["auto", "auto", true],
+    ["auto", "auto", false],
     ["google", "gemini-3.7-flash", false],
   ])(
     "returns $2 for provider $0 and model $1",

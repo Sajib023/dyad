@@ -2078,8 +2078,23 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(systemContracts.getAppVersion, async () => {
-    // Read version from package.json at project root
-    const packageJsonPath = path.resolve(__dirname, "..", "..", "package.json");
+    // Read version from package.json at project root. Packaged __dirname is
+    // `.vite/build` (../.. = app root); from source (__dirname =
+    // `src/ipc/handlers`) the root is one level higher, and in Docker cwd
+    // is `/app`.
+    const candidates = [
+      path.resolve(__dirname, "..", "..", "package.json"),
+      path.resolve(__dirname, "..", "..", "..", "package.json"),
+      path.join(process.cwd(), "package.json"),
+    ];
+    const packageJsonPath =
+      candidates.find((candidate) => {
+        try {
+          return fs.existsSync(candidate);
+        } catch {
+          return false;
+        }
+      }) ?? candidates[0];
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
     return { version: packageJson.version };
   });

@@ -2,7 +2,6 @@ import {
   isShellExperimentAvailable,
   shellExecutionGuidance,
 } from "@/shared/shell_capability";
-import { isFreeProModel } from "@/lib/freeProModel";
 import { db } from "../../db";
 import { chats } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -36,7 +35,6 @@ import {
 } from "@/ipc/utils/model_effort";
 import { extractMentionedAppsCodebasesFromPrompt } from "../utils/mention_apps";
 import {
-  isDyadProEnabled,
   isBasicAgentMode,
   isLocalAgentBackedMode,
   isTurboEditsV2Enabled,
@@ -128,7 +126,6 @@ export function registerTokenCountHandlers() {
         hasSupabaseProject: !!chat.app?.supabaseProjectId,
         implementerAvailable:
           selectedChatMode === "local-agent" &&
-          isDyadProEnabled(settings) &&
           isImplementerSubagentEnabled(settings),
         testingEnabled: !!chat.app?.testingEnabled,
         enableAppBlueprint,
@@ -192,8 +189,9 @@ export function registerTokenCountHandlers() {
         systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
       }
 
-      const isDyadPro = isDyadProEnabled(settings);
-      const freeModelMode = isFreeProModel(selectedModel);
+      const isDyadPro = false;
+      // The Pro free tier is gone; every estimate assumes the user's own key.
+      const freeModelMode = false;
       const mcpToolDefs =
         selectedChatMode === "local-agent" ? getCachedMcpToolDefs() : [];
       // Cached only: an estimate must never wait on the catalog network
@@ -233,17 +231,14 @@ export function registerTokenCountHandlers() {
         testingEnabled: !!chat.app.testingEnabled,
         canUseExplorerSubagent:
           selectedChatMode !== "build" &&
-          isDyadPro &&
           settings.enableExplorerSubagent !== false,
         canUseImplementerSubagent:
           selectedChatMode === "local-agent" &&
-          isDyadPro &&
           isImplementerSubagentEnabled(settings),
         mcpToolDefs,
         suggestablePlugins,
         canUseAdvancedSubagentTools:
           selectedChatMode === "local-agent" &&
-          isDyadPro &&
           settings.enableAdvancedSubagents === true,
         runTypeScriptForWholeProject:
           settings.runTypeScriptForWholeProject === true,

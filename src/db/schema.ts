@@ -713,6 +713,9 @@ export const language_model_providers = sqliteTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     api_base_url: text("api_base_url").notNull(),
+    // Wire protocol the provider speaks. Legacy rows predate this column and
+    // read back as null, which callers treat as "openai".
+    api_protocol: text("api_protocol").default("openai"),
     env_var_name: text("env_var_name"),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
