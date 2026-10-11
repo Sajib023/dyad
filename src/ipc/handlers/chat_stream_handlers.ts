@@ -1,10 +1,7 @@
-import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
 import { modelForChatBackend } from "@/shared/execution_backend";
 import { isDotenvFilePath } from "@/utils/dotenv_redaction";
 import type { ExternalModelAdmission } from "../services/external_model_admission";
 import { awaitTurnPreflight } from "../services/await_turn_preflight";
-import type { AutoModelCandidates } from "../services/auto_model_candidates";
-import { preflightSubscriptionTurn } from "../services/subscription_turn_preflight";
 import {
   executionBackendForModel,
   BACKEND_SWITCH_MESSAGE,
@@ -162,28 +159,17 @@ import {
 } from "../utils/media_path_utils";
 import {
   isBasicAgentMode,
-  isDyadProEnabled,
   isLocalAgentBackedMode,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
-import { isFreeProModel } from "@/lib/freeProModel";
 import { isImplementerSubagentEnabled } from "@/lib/autoSidekick";
 import {
   assertChatModeCompatibleWithModel,
   normalizeStoredChatMode,
   resolveChatModeForTurn,
 } from "./chat_mode_resolution";
-import {
-  acceptChatTurn,
-  isChatTurnAlreadyAccepted,
-} from "./chat_turn_acceptance";
+import { acceptChatTurn } from "./chat_turn_acceptance";
 import { withChatQueueLock } from "@/chat_stream/queue_lock";
-import {
-  commitFreeAgentQuotaSlot,
-  releaseFreeAgentQuotaSlot,
-  reserveFreeAgentQuotaSlot,
-  unmarkMessageAsUsingFreeAgentQuota,
-} from "./free_agent_quota_handlers";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import {
@@ -1016,8 +1002,6 @@ export function registerChatStreamHandlers() {
     let finishedNaturally = false;
     let replayedAcceptedFollowUp = false;
     let mutatedPersistedChat = false;
-    let freeAgentQuotaReservationId: number | null = null;
-    let reservedFreeAgentQuotaMessageId: number | null = null;
     // Expose a promise that resolves once this handler fully unwinds (see the
     // `finally` block) so `cancelStream` can await in-flight tool/file writes.
     let resolveCompletion: () => void = () => {};
@@ -1199,36 +1183,6 @@ export function registerChatStreamHandlers() {
         const status = await claudeStatus();
         if (!status.connected || !status.compatible)
           throw new DyadError(status.detail, DyadErrorKind.Precondition);
-      }
-
-      // Reserve quota before redo or attachment persistence. The reservation
-      // is converted to a durable message mark only after turn acceptance.
-      let isBasicAgentModeRequest = isBasicAgentMode({
-        ...storedSettings,
-        selectedChatMode,
-      });
-      const isAcceptedReplay = isChatTurnAlreadyAccepted(db, {
-        chatId: req.chatId,
-        chatTurnIntentId: req.intentId,
-        userInputRequestId: req.userInputRequestId,
-      });
-      if (isBasicAgentModeRequest && !isAcceptedReplay) {
-        const quotaReservation = await reserveFreeAgentQuotaSlot();
-        if (quotaReservation.kind === "quota-exceeded") {
-          const { quotaStatus } = quotaReservation;
-          safeSend(event.sender, "chat:response:error", {
-            chatId: req.chatId,
-            invocationRef: req.invocationRef,
-            streamId: req.streamId,
-            error: JSON.stringify({
-              type: "FREE_AGENT_QUOTA_EXCEEDED",
-              hoursUntilReset: quotaStatus.hoursUntilReset,
-              resetTime: quotaStatus.resetTime,
-            }),
-          } satisfies ChatStreamErrorPayload);
-          return req.chatId;
-        }
-        freeAgentQuotaReservationId = quotaReservation.reservationId;
       }
 
       // Capture redo targets now, but delete them only when the replacement
@@ -1590,7 +1544,6 @@ ${componentSnippet}
       const defaultAiUserPrompt =
         userPrompt + (attachmentInfo ? attachmentInfo : "");
 
-      const autoModelCandidates: AutoModelCandidates = new Map();
       let externalModelAdmission: ExternalModelAdmission | undefined;
       const readAdmissionChat = () => {
         const latestChat = db
@@ -1632,7 +1585,6 @@ ${componentSnippet}
           const snapshot = readAdmissionChat();
           const sourceSettings = readAdmissionSettings();
           const attemptSettings = { ...baseSettings, ...sourceSettings };
-          const candidates: AutoModelCandidates = new Map();
           const prepared = await awaitTurnPreflight(
             (async () => {
               const model = snapshot.modelSelection
@@ -1641,21 +1593,16 @@ ${componentSnippet}
                     ...attemptSettings,
                     selectedModel: modelForChatBackend(chat, attemptSettings),
                   });
-              const { mode } = await resolveChatModeForTurn({
+              await resolveChatModeForTurn({
                 storedChatMode: snapshot.chatMode,
                 requestedChatMode:
                   req.requestedChatMode ??
                   normalizeStoredChatMode(snapshot.chatMode),
                 settings: { ...attemptSettings, selectedModel: model },
               });
-              return isAcceptedReplay
-                ? { model, externalModelAdmission: undefined }
-                : preflightSubscriptionTurn(
-                    model,
-                    { ...attemptSettings, selectedChatMode: mode },
-                    abortController.signal,
-                    candidates,
-                  );
+              // BYOK-only: the explicit provider/model selection needs no
+              // subscription, credit or Auto-candidate routing.
+              return { model, externalModelAdmission: undefined };
             })().then(
               (result) => ({ ok: true as const, ...result }),
               (error) => ({ ok: false as const, error }),
@@ -1677,9 +1624,6 @@ ${componentSnippet}
             baseSettings = attemptSettings;
             selectedModel = prepared.model;
             externalModelAdmission = prepared.externalModelAdmission;
-            autoModelCandidates.clear();
-            for (const [alias, candidate] of candidates)
-              autoModelCandidates.set(alias, candidate);
             const latestResolution = await resolveChatModeForTurn({
               storedChatMode: latestChat.chatMode,
               requestedChatMode:
@@ -1690,39 +1634,6 @@ ${componentSnippet}
             ({ settings: storedSettings, mode: selectedChatMode } =
               latestResolution);
             assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
-            isBasicAgentModeRequest = isBasicAgentMode({
-              ...storedSettings,
-              selectedChatMode,
-            });
-
-            if (
-              isBasicAgentModeRequest &&
-              freeAgentQuotaReservationId === null &&
-              !isAcceptedReplay
-            ) {
-              const quotaReservation = await reserveFreeAgentQuotaSlot();
-              if (quotaReservation.kind === "quota-exceeded") {
-                const { quotaStatus } = quotaReservation;
-                safeSend(event.sender, "chat:response:error", {
-                  chatId: req.chatId,
-                  invocationRef: req.invocationRef,
-                  streamId: req.streamId,
-                  error: JSON.stringify({
-                    type: "FREE_AGENT_QUOTA_EXCEEDED",
-                    hoursUntilReset: quotaStatus.hoursUntilReset,
-                    resetTime: quotaStatus.resetTime,
-                  }),
-                } satisfies ChatStreamErrorPayload);
-                return null;
-              }
-              freeAgentQuotaReservationId = quotaReservation.reservationId;
-            } else if (
-              !isBasicAgentModeRequest &&
-              freeAgentQuotaReservationId !== null
-            ) {
-              await releaseFreeAgentQuotaSlot(freeAgentQuotaReservationId);
-              freeAgentQuotaReservationId = null;
-            }
 
             const persistAcceptedTurn = () => {
               abortController.signal.throwIfAborted();
@@ -1738,24 +1649,11 @@ ${componentSnippet}
                 userInputRequestId: req.userInputRequestId,
                 chatTurnIntentId: req.intentId,
                 chatTurnIntent: executionObserver(req)?.intent,
-                usingFreeAgentModeQuota: freeAgentQuotaReservationId !== null,
+                usingFreeAgentModeQuota: false,
                 redoMessageIds,
               });
             };
-            if (freeAgentQuotaReservationId === null) {
-              return persistAcceptedTurn();
-            }
-
-            const reservationId = freeAgentQuotaReservationId;
-            const acceptedTurn = await commitFreeAgentQuotaSlot(
-              reservationId,
-              persistAcceptedTurn,
-            );
-            freeAgentQuotaReservationId = null;
-            if (acceptedTurn.userMessageId !== null) {
-              reservedFreeAgentQuotaMessageId = acceptedTurn.userMessageId;
-            }
-            return acceptedTurn;
+            return persistAcceptedTurn();
           });
           if (result !== retryAdmission) return result;
         }
@@ -1831,17 +1729,8 @@ ${componentSnippet}
         ...storedSettings,
         selectedChatMode,
       };
-      isBasicAgentModeRequest = isBasicAgentMode(settings);
-      if (
-        !isBasicAgentModeRequest &&
-        reservedFreeAgentQuotaMessageId !== null
-      ) {
-        await unmarkMessageAsUsingFreeAgentQuota(
-          reservedFreeAgentQuotaMessageId,
-        );
-        reservedFreeAgentQuotaMessageId = null;
-      }
-      const freeModelMode = isFreeProModel(settings.selectedModel);
+      // The Pro free tier is gone; every request uses the user's own key.
+      const freeModelMode = false;
       const hasImageAttachments = storedAttachments.some((attachment) =>
         attachment.mimeType.startsWith("image/"),
       );
@@ -1866,11 +1755,8 @@ ${componentSnippet}
         streamId: req.streamId,
         effectiveChatMode: selectedChatMode,
       } satisfies ChatStreamChunkPayload);
-      // Only Dyad Pro requests have request ids.
-      if (settings.enableDyadPro) {
-        // Generate requestId early so it can be saved with the message
-        dyadRequestId = uuidv4();
-      }
+      // Generate requestId early so it can be saved with the message
+      dyadRequestId = uuidv4();
       const willUseLocalAgentStream = isLocalAgentBackedMode(selectedChatMode);
       if (!willUseLocalAgentStream) {
         throw new DyadError(
@@ -1892,11 +1778,7 @@ ${componentSnippet}
           approvalState: willUseLocalAgentStream ? "approved" : null,
           requestId: dyadRequestId,
           model:
-            chat.executionBackend === "claude-code"
-              ? null
-              : selectedModel.connection === "subscription"
-                ? `ChatGPT subscription (${selectedModel.name})`
-                : selectedModel.name,
+            chat.executionBackend === "claude-code" ? null : selectedModel.name,
           sourceCommitHash: await getCurrentCommitHash({
             path: getDyadAppPath(chat.app.path),
           }),
@@ -1956,7 +1838,7 @@ ${componentSnippet}
             settings.selectedModel,
             settings,
             selectedModel,
-            { chatId: req.chatId, autoModelCandidates, externalModelAdmission },
+            { chatId: req.chatId, externalModelAdmission },
           );
 
         const isBuildMode = selectedChatMode === "build";
@@ -2197,7 +2079,6 @@ ${componentSnippet}
         // persona is disabled. Code-index readiness is independent now that
         // spawn_agent replaces the old explore_code tool.
         const codeExplorerAvailable =
-          isDyadProEnabled(settings) &&
           settings.enableExplorerSubagent !== false &&
           settings.agentToolConsents?.["spawn_agent"] !== "never";
         // Mirrors explore_chat_history's toolset inclusion (Pro, and not
@@ -2205,11 +2086,9 @@ ${componentSnippet}
         // that isn't in the toolset. Consent is read from settings directly
         // because this module must not import the pro tool registry.
         const historyExplorerAvailable =
-          isDyadProEnabled(settings) &&
           settings.agentToolConsents?.["explore_chat_history"] !== "never";
         const implementerAvailable =
           selectedChatMode === "local-agent" &&
-          isDyadProEnabled(settings) &&
           isImplementerSubagentEnabled(settings);
         const restartAppToolAvailable =
           settings.agentToolConsents?.["restart_app"] !== "never";
@@ -2699,10 +2578,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 chatId: req.chatId,
                 invocationRef: req.invocationRef,
                 streamId: req.streamId,
-                error:
-                  error?.error instanceof SubscriptionBillingError
-                    ? error.error.serialize()
-                    : `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
+                error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
               } satisfies ChatStreamErrorPayload);
             },
             abortSignal: abortController.signal,
@@ -2809,9 +2685,7 @@ This conversation includes one or more image attachments. When the user uploads 
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
-              autoModelCandidates,
               externalModelAdmission,
-              freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
                 hasScriptReadableAttachment(storedAttachments),
@@ -2859,9 +2733,7 @@ This conversation includes one or more image attachments. When the user uploads 
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
-              autoModelCandidates,
               externalModelAdmission,
-              freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment: false,
               supabaseProviderToolsAvailable:
@@ -2890,9 +2762,7 @@ This conversation includes one or more image attachments. When the user uploads 
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
-              autoModelCandidates,
               externalModelAdmission,
-              freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
                 hasScriptReadableAttachment(storedAttachments),
@@ -2922,9 +2792,7 @@ This conversation includes one or more image attachments. When the user uploads 
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
-              autoModelCandidates,
               externalModelAdmission,
-              freeModelMode,
               preCommitHookAvailable,
               refreshImplementerContext,
               implementerFallbackSystemPrompt,
@@ -2936,10 +2804,6 @@ This conversation includes one or more image attachments. When the user uploads 
                 hasScriptReadableAttachment(storedAttachments),
             },
           );
-          if (streamSuccess) {
-            reservedFreeAgentQuotaMessageId = null;
-          }
-
           finishedNaturally = streamSuccess;
           return;
         }
@@ -3271,10 +3135,7 @@ This conversation includes one or more image attachments. When the user uploads 
     } catch (error) {
       logger.error("Error calling LLM:", error);
       const errorMessage = isDyadError(error) ? error.message : String(error);
-      const rendererError =
-        error instanceof SubscriptionBillingError
-          ? error.serialize()
-          : `Sorry, there was an error processing your request: ${errorMessage}`;
+      const rendererError = `Sorry, there was an error processing your request: ${errorMessage}`;
       safeSend(event.sender, "chat:response:error", {
         chatId: req.chatId,
         invocationRef: req.invocationRef,
@@ -3284,22 +3145,6 @@ This conversation includes one or more image attachments. When the user uploads 
 
       return "error";
     } finally {
-      if (freeAgentQuotaReservationId !== null) {
-        try {
-          await releaseFreeAgentQuotaSlot(freeAgentQuotaReservationId);
-        } catch (error) {
-          logger.error("Failed to release pending Basic Agent quota", error);
-        }
-      }
-      if (reservedFreeAgentQuotaMessageId !== null) {
-        try {
-          await unmarkMessageAsUsingFreeAgentQuota(
-            reservedFreeAgentQuotaMessageId,
-          );
-        } catch (error) {
-          logger.error("Failed to refund reserved Basic Agent quota", error);
-        }
-      }
       if (mutatedPersistedChat) {
         queryInvalidationBus.publish(
           [{ family: "chats" }, { family: "chat", chatId: req.chatId }],

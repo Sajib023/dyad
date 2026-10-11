@@ -10,7 +10,6 @@ import {
   type ChatMode,
   type UserSettings,
 } from "@/lib/schemas";
-import { getFreeProCompatibleChatMode } from "@/lib/freeProModel";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSettings } from "./useSettings";
 
@@ -42,10 +41,7 @@ export function useChatMode(chatId: number | null | undefined) {
 
   const selectedModel = modelForChatBackend(chatQuery.data, settings);
   const effectiveDefaultMode = settings
-    ? getFreeProCompatibleChatMode(
-        selectedModel ?? settings.selectedModel,
-        getEffectiveDefaultChatMode(settings, envVars),
-      )
+    ? getEffectiveDefaultChatMode(settings, envVars)
     : "build";
 
   const storedChatMode = chatQuery.data?.chatMode ?? null;

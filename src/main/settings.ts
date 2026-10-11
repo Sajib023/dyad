@@ -47,8 +47,9 @@ const logger = log.scope("settings");
 export const DEFAULT_SETTINGS: UserSettings = {
   chatgptFastMode: false,
   selectedModel: {
-    name: "auto",
-    provider: "auto",
+    // Opencode-style: explicit default, no Auto chain (see DEFAULT_MODEL).
+    name: "claude-sonnet-4-6",
+    provider: "anthropic",
   },
   providerSettings: {},
   telemetryConsent: "unset",

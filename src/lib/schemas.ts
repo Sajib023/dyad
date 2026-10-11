@@ -99,6 +99,16 @@ export const LargeLanguageModelSchema = z.object({
  */
 export type LargeLanguageModel = z.infer<typeof LargeLanguageModelSchema>;
 
+/**
+ * Opencode-style default: an explicit provider/model pair. There is no Auto
+ * fallback chain, so fresh installs and legacy `auto/auto` selections land
+ * here until the user picks their own model + API key.
+ */
+export const DEFAULT_MODEL: LargeLanguageModel = {
+  provider: "anthropic",
+  name: "claude-sonnet-4-6",
+};
+
 export const EffortLevelSchema = z.string().trim().min(1);
 
 export const ModelSelectionSchema = LargeLanguageModelSchema.extend({
@@ -687,8 +697,11 @@ export function migrateStoredSettings(
   };
 }
 
-export function isDyadProEnabled(settings: UserSettings): boolean {
-  return settings.enableDyadPro === true && hasDyadProKey(settings);
+// Retired: Dyad Pro no longer exists (BYOK-only, opencode-style). Always
+// false so every remaining Pro gate in the codebase stays open. The settings
+// fields themselves are kept so stored settings files still parse.
+export function isDyadProEnabled(_settings: UserSettings): boolean {
+  return false;
 }
 
 export function hasDyadProKey(settings: UserSettings): boolean {
@@ -741,12 +754,10 @@ export function getEffectiveDefaultChatMode(
  * - User is NOT a Pro subscriber
  * - User is using local-agent chat mode
  */
-export function isBasicAgentMode(settings: UserSettings): boolean {
-  return (
-    settings.selectedModel.provider !== "claude-code" &&
-    !isDyadProEnabled(settings) &&
-    settings.selectedChatMode === "local-agent"
-  );
+// Retired alongside Pro: the limited "basic agent" tier no longer exists,
+// everyone gets the full toolset.
+export function isBasicAgentMode(_settings: UserSettings): boolean {
+  return false;
 }
 
 export function isSupabaseConnected(settings: UserSettings | null): boolean {

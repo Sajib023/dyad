@@ -372,6 +372,7 @@ export type {
 
 // Language model types
 export type {
+  CustomProviderApiProtocol,
   LanguageModelProvider,
   LanguageModel,
   LocalModel,

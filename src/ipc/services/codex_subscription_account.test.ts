@@ -14,10 +14,8 @@ vi.mock("../shared/remote_language_model_catalog", () => ({
 vi.mock("../shared/language_model_helpers", () => ({
   getLanguageModelProviders: async () => [],
 }));
-import { resolveSubscriptionModel } from "./resolve_subscription_model";
 import { usesChatGPTSubscription } from "@/lib/subscriptionModels";
 import type { UserSettings } from "@/lib/schemas";
-import { DyadErrorKind } from "@/errors/dyad_error";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 const settings = {
   enableDyadPro: true,
@@ -366,9 +364,6 @@ it.each(["empty", "error", "hidden"])(
       effortLevel: "medium",
     };
     expect(usesChatGPTSubscription(model, settings, account)).toBe(true);
-    expect(await resolveSubscriptionModel(model, settings)).toMatchObject({
-      connection: "subscription",
-    });
     expect(mocks.catalog).toHaveBeenCalled();
   },
 );
@@ -444,12 +439,6 @@ it.each([401, 403, "credentials"])(
     );
     const account = await getSubscriptionAccount({ includeUsage: false });
     expect(account.error).toContain("Reconnect");
-    await expect(
-      resolveSubscriptionModel(
-        { provider: "openai", name: "gpt-fallback", effortLevel: "medium" },
-        settings,
-      ),
-    ).rejects.toMatchObject({ kind: DyadErrorKind.Auth });
   },
 );
 
@@ -509,30 +498,4 @@ it("prefers a recovered ChatGPT catalog over a still-pending built-in fallback",
   } finally {
     now.mockRestore();
   }
-});
-
-it("refuses unknown eligibility when both catalogs are empty instead of routing to Pro", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => accountResponse([])),
-  );
-  await expect(
-    resolveSubscriptionModel(
-      { provider: "openai", name: "unknown", effortLevel: "medium" },
-      settings,
-    ),
-  ).rejects.toMatchObject({ kind: DyadErrorKind.External });
-});
-
-it("preserves authentication errors even when the built-in catalog is empty", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => new Response("denied", { status: 401 })),
-  );
-  await expect(
-    resolveSubscriptionModel(
-      { provider: "openai", name: "unknown", effortLevel: "medium" },
-      settings,
-    ),
-  ).rejects.toMatchObject({ kind: DyadErrorKind.Auth });
 });

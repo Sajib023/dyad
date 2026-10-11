@@ -2322,16 +2322,9 @@ function assertPersonaEnabled(
   }
 }
 
-function assertPro(persona?: SubagentPersona): void {
-  if (!isDyadProEnabled(readSettings())) {
-    throw new DyadError(
-      persona
-        ? `${persona} sub-agents require Dyad Pro.`
-        : "Sub-agents require Dyad Pro.",
-      DyadErrorKind.Auth,
-    );
-  }
-}
+// Retired Pro gate. Sub-agents run on the user's own API key now, so every
+// caller passes unconditionally. Kept as a no-op so call sites are untouched.
+function assertPro(_persona?: SubagentPersona): void {}
 
 export function emitSubagentUpdate(chatId: number, threadId: string): void {
   for (const target of eventTargets) {

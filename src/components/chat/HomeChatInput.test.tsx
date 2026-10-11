@@ -130,13 +130,7 @@ describe("HomeChatInput", () => {
       (screen.getByRole("button", { name: "Editor" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "Voice to text",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+
     expect(
       (screen.getByTestId("home-app-selector") as HTMLButtonElement).disabled,
     ).toBe(true);

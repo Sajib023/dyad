@@ -621,7 +621,17 @@ server.on("upgrade", (req, socket, _head) => {
   // Browser WebSockets carry cookies without CORS preflight. Never turn a
   // foreign Origin into a trusted upstream Origin. Non-browser clients may
   // omit Origin, but browsers (including HMR) must use this preview's origin.
-  if (req.headers.origin && req.headers.origin !== previewOrigin) {
+  // Web mode: previews share the Dyad shell origin (path-prefix proxy), so
+  // HMR sockets arrive with Origin = DYAD_WEB_PUBLIC_ORIGIN, not previewOrigin.
+  if (
+    req.headers.origin &&
+    req.headers.origin !== previewOrigin &&
+    !(
+      IS_WEB_MODE &&
+      WEB_PUBLIC_ORIGIN &&
+      req.headers.origin === WEB_PUBLIC_ORIGIN
+    )
+  ) {
     socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
     return;
   }

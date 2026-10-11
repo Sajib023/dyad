@@ -4,12 +4,6 @@ import {
   resolveChatMode,
   type ChatModeResolution,
 } from "@/lib/chatMode";
-import {
-  FREE_PRO_BUILD_MODE_ERROR,
-  getFreeProCompatibleChatMode,
-  isFreeProBuildModeCombination,
-} from "@/lib/freeProModel";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
 import { PROVIDER_TO_ENV_VAR } from "@/ipc/shared/language_model_constants";
 import { getEnvVar } from "@/ipc/utils/read_env";
@@ -17,13 +11,9 @@ import { getEnvVar } from "@/ipc/utils/read_env";
 export { normalizeStoredChatMode };
 
 export function assertChatModeCompatibleWithModel(
-  settings: UserSettings,
-  chatMode: ChatMode,
-): void {
-  if (isFreeProBuildModeCombination(settings.selectedModel, chatMode)) {
-    throw new DyadError(FREE_PRO_BUILD_MODE_ERROR, DyadErrorKind.Precondition);
-  }
-}
+  _settings: UserSettings,
+  _chatMode: ChatMode,
+): void {}
 
 export async function resolveChatModeForTurn({
   storedChatMode,
@@ -36,7 +26,6 @@ export async function resolveChatModeForTurn({
 }): Promise<ChatModeResolution & { settings: UserSettings }> {
   const modeForTurn =
     requestedChatMode === undefined ? storedChatMode : requestedChatMode;
-  const normalizedChatMode = normalizeStoredChatMode(modeForTurn);
   const envVars = getChatModeEnvVars();
 
   const resolution = resolveChatMode({
@@ -47,10 +36,7 @@ export async function resolveChatModeForTurn({
 
   return {
     ...resolution,
-    mode:
-      normalizedChatMode === null
-        ? getFreeProCompatibleChatMode(settings.selectedModel, resolution.mode)
-        : resolution.mode,
+    mode: resolution.mode,
     settings,
   };
 }

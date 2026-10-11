@@ -34,6 +34,8 @@ export async function getLanguageModelProviders(): Promise<
       id: cp.id,
       name: cp.name,
       apiBaseUrl: cp.api_base_url,
+      // Legacy rows predate the column and read back null -> OpenAI-compatible.
+      apiProtocol: cp.api_protocol === "anthropic" ? "anthropic" : "openai",
       envVarName: cp.env_var_name ?? undefined,
       type: "custom",
       // hasFreeTier, websiteUrl, gatewayPrefix are not in the custom DB schema
@@ -48,9 +50,10 @@ export async function getLanguageModelProviders(): Promise<
     providerCount: builtinCatalog.providers.length,
   });
 
-  const hardcodedProviders: LanguageModelProvider[] = [
-    ...builtinCatalog.providers,
-  ];
+  // The retired "auto" provider never surfaces, even if a stale remote
+  // catalog still lists it.
+  const hardcodedProviders: LanguageModelProvider[] =
+    builtinCatalog.providers.filter((p) => p.id !== "auto");
 
   // Merge in any CLOUD_PROVIDERS not present in the remote catalog
   // (e.g. auto, azure, bedrock which are not in the remote API).

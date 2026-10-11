@@ -14,22 +14,12 @@ import { SECTION_IDS } from "@/lib/settingsSearchIndex";
 import SetupProviderCard from "@/components/SetupProviderCard";
 
 import { ipc } from "@/ipc/types";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { usePostHog } from "posthog-js/react";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
 // @ts-ignore
-import logo from "../../assets/logo.svg";
-// @ts-ignore
 import openrouterLogo from "../../assets/ai-logos/openrouter-logo.png";
-import { SetupDyadProButton } from "./ProBanner";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useSubscriptionAccount } from "@/hooks/useSubscriptionAccount";
-import { useSettings } from "@/hooks/useSettings";
-import { isDyadProEnabled } from "@/lib/schemas";
-import { queryKeys } from "@/lib/queryKeys";
-import { ProviderIcon } from "./ProviderIcon";
 
 export function SetupBanner({
   variant = "inline",
@@ -41,22 +31,6 @@ export function SetupBanner({
   const { t } = useTranslation("home");
   const posthog = usePostHog();
   const navigate = useNavigate();
-  const client = useQueryClient();
-  const subscription = useSubscriptionAccount();
-  const { settings } = useSettings();
-  const hasPro = settings && isDyadProEnabled(settings);
-  const connection = useMutation({
-    mutationFn: (cancel: boolean) =>
-      cancel
-        ? ipc.settings.disconnectCodexSubscription()
-        : ipc.settings.connectCodexSubscription({
-            acceptCharges: true,
-            selectModel: !hasPro,
-          }),
-    onSuccess: async () => {
-      await client.invalidateQueries({ queryKey: queryKeys.settings.all });
-    },
-  });
   const { hasArmedPayload: hasPendingPrompt } = useFirstPromptSaga();
   const { isAnyProviderSetup, isLoading: loading } =
     useLanguageModelProviders();
@@ -66,11 +40,6 @@ export function SetupBanner({
     block: "start",
   });
 
-  const handleSubscriptionSetupClick = () => {
-    posthog.capture("setup-flow:ai-provider-setup:chatgpt:click");
-    connection.mutate(false);
-  };
-
   const handleOpenRouterSetupClick = () => {
     posthog.capture("setup-flow:ai-provider-setup:openrouter:click");
     navigate({
@@ -78,13 +47,6 @@ export function SetupBanner({
       params: { provider: "openrouter" },
     });
   };
-  const handleDyadProSetupClick = () => {
-    posthog.capture("setup-flow:ai-provider-setup:dyad:click");
-    ipc.system.openExternalUrl(
-      "https://academy.dyad.sh/redirect-to-checkout?trialCode=7PRO30&utm_source=dyad-app&utm_medium=app&utm_campaign=setup-dialog-v2",
-    );
-  };
-
   const handleOtherProvidersClick = () => {
     posthog.capture("setup-flow:ai-provider-setup:other:click");
     settingsScrollAndNavigateTo(SECTION_IDS.providers);
@@ -142,34 +104,11 @@ export function SetupBanner({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={handleDyadProSetupClick}
-          className="mt-5 flex w-full cursor-pointer items-center justify-between gap-4 rounded-lg border border-primary/45 bg-primary/8 p-4 text-left transition-colors hover:bg-primary/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 dark:bg-primary/15 dark:hover:bg-primary/20"
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10">
-              <img src={logo} alt="Dyad Logo" className="size-6" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-lg font-semibold text-primary">
-                Start free Dyad Pro trial
-              </h3>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                No API keys. Access leading models instantly.
-              </p>
-            </div>
-          </div>
-          <Button as="span" size="sm" className="shrink-0">
-            Start
-          </Button>
-        </button>
-
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-muted-foreground">
-            Or use your own subscription or API key
+            Use your own API key
           </p>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2">
             <ProviderOptionButton
               label="OpenRouter"
               chip="Free"
@@ -183,69 +122,14 @@ export function SetupBanner({
               }
             />
             <ProviderOptionButton
-              label="ChatGPT subscription"
-              chip={
-                settings &&
-                !hasPro &&
-                subscription.data &&
-                !subscription.data.pending
-                  ? "Free"
-                  : undefined
-              }
-              onClick={handleSubscriptionSetupClick}
-              disabled={
-                connection.isPending ||
-                subscription.data?.pending ||
-                !settings ||
-                subscription.isLoading
-              }
-              icon={<ProviderIcon providerId="openai" className="size-4" />}
-            />
-            <ProviderOptionButton
               label="Other providers"
               onClick={handleOtherProvidersClick}
               icon={<Settings className="size-4 text-muted-foreground" />}
             />
           </div>
-          {!settings && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Checking Dyad Pro status…
-            </p>
-          )}
-          {subscription.data?.pending && (
-            <div className="mt-2 flex items-center justify-center gap-2">
-              <p
-                role="status"
-                aria-live="polite"
-                className="text-xs text-muted-foreground"
-              >
-                Waiting for ChatGPT sign-in in your browser…
-              </p>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={connection.isPending}
-                onClick={() => connection.mutate(true)}
-              >
-                Cancel sign-in
-              </Button>
-            </div>
-          )}
-          {(connection.error ||
-            subscription.error ||
-            subscription.data?.error ||
-            subscription.data?.setupError) && (
-            <p role="alert" className="mt-2 text-sm text-destructive">
-              {connection.error?.message ??
-                subscription.error?.message ??
-                subscription.data?.error ??
-                subscription.data?.setupError}
-            </p>
-          )}
         </div>
 
         <div className="mt-4 flex w-full flex-col items-center justify-around gap-2 text-xs sm:flex-row">
-          <SetupDyadProButton />
           <button
             type="button"
             onClick={() => {

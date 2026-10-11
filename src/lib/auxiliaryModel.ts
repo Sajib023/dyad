@@ -1,10 +1,8 @@
-import { isDyadProEnabled, type UserSettings } from "./schemas";
+import type { UserSettings } from "./schemas";
 
-/** Pro helpers retain their engine models even when main-chat inference uses BYO.
- * Return a request-only snapshot; never change the user's billing-source setting.
+/** Retired: helper tasks used to be re-routed through Pro billing. Every
+ * request uses the user's own key now, so helpers inherit settings unchanged.
  */
 export function getAuxiliarySettings(settings: UserSettings): UserSettings {
-  return settings.proModelUsage === "api-key" && isDyadProEnabled(settings)
-    ? { ...settings, proModelUsage: "pro" }
-    : settings;
+  return settings;
 }

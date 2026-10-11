@@ -127,9 +127,16 @@ const mocks = vi.hoisted(() => ({
     proModelUsage: "subscription" as "subscription" | "pro" | "api-key",
     enableDyadPro: true,
     providerSettings: {
+      // Inert legacy entry: retired Auto provider. Some tests reset it;
+      // nothing in the UI reads it anymore.
       auto: {
         apiKey: {
-          value: "dyad-pro-key",
+          value: "",
+        },
+      },
+      openai: {
+        apiKey: {
+          value: "test-openai-key",
         },
       },
       openrouter: {
@@ -137,10 +144,10 @@ const mocks = vi.hoisted(() => ({
           value: "",
         },
       },
-    },
+    } as Record<string, { apiKey: { value: string } }>,
     selectedModel: {
-      name: "auto",
-      provider: "auto",
+      name: "gpt-5-mini",
+      provider: "openai",
     } as { name: string; provider: string; customModelId?: number },
     recentModels: [] as
       | Array<{
@@ -291,39 +298,6 @@ vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
       ? undefined
       : {
           anthropic: mocks.anthropicModels,
-          auto: [
-            {
-              apiName: "value",
-              displayName: "Super Value",
-              description: "Uses the most cost-effective models available",
-              type: "cloud",
-            },
-            {
-              apiName: "auto",
-              displayName: "Auto",
-              description: "Automatically selects a model",
-              type: "cloud",
-            },
-            {
-              apiName: "balanced",
-              displayName: "Auto (balanced)",
-              description: "Balanced model",
-              type: "cloud",
-            },
-            {
-              apiName: "free",
-              displayName: "Free (OpenRouter)",
-              description: "Free model",
-              type: "cloud",
-            },
-            {
-              apiName: "free-pro",
-              displayName: "Dyad Free",
-              description: "Free Pro model",
-              type: "cloud",
-              tag: "Free",
-            },
-          ],
           openai: [
             {
               apiName: "gpt-5-mini",
@@ -426,14 +400,9 @@ vi.mock("@/hooks/useLanguageModelProviders", () => ({
           mocks.envVars.OPENROUTER_API_KEY,
         );
       }
-      return false;
+      return Boolean(mocks.settings.providerSettings[provider]?.apiKey?.value);
     },
     data: [
-      {
-        id: "auto",
-        name: "Dyad",
-        type: "cloud",
-      },
       {
         id: "openai",
         name: "OpenAI",
@@ -672,10 +641,13 @@ describe("ModelPicker", () => {
     mocks.ollamaError = null;
     mocks.lmStudioModels = [];
     mocks.lmStudioError = null;
-    mocks.settings.enableDyadPro = true;
-    mocks.settings.providerSettings.auto.apiKey.value = "dyad-pro-key";
-    mocks.settings.providerSettings.openrouter.apiKey.value = "";
-    mocks.settings.selectedModel = { name: "auto", provider: "auto" };
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings = {
+      auto: { apiKey: { value: "" } },
+      openai: { apiKey: { value: "test-openai-key" } },
+      openrouter: { apiKey: { value: "" } },
+    };
+    mocks.settings.selectedModel = { name: "gpt-5-mini", provider: "openai" };
     mocks.settings.recentModels = [];
     mocks.settings.selectedChatMode = "build";
     mocks.settings.defaultChatMode = "build";
@@ -693,30 +665,21 @@ describe("ModelPicker", () => {
   });
 
   it("keeps the root menu focused on quick choices and catalog entry points", () => {
+    mocks.settings.recentModels = [{ provider: "openai", name: "gpt-5" }];
     render(<ModelPicker />);
 
-    const autoSidekickRow = screen.getByText("Auto Sidekick").closest("button");
-    expect(autoSidekickRow?.textContent).toContain("Experimental");
-    expect(autoSidekickRow?.getAttribute("aria-label")).toContain(
-      "Experimental",
-    );
-    expect(screen.queryByText("GPT 5")).toBeNull();
+    // The current selection seeds Recent; the full catalog lives under All models.
+    expect(screen.getByText("Recent")).toBeTruthy();
+    expect(screen.getByText("GPT 5 Mini")).toBeTruthy();
+    expect(screen.queryByText("Auto Sidekick")).toBeNull();
+    expect(screen.queryByText("Dyad Free")).toBeNull();
+    expect(screen.queryByText("Upgrade to Dyad Pro")).toBeNull();
     expect(screen.queryByText("Premium")).toBeNull();
-    expect(screen.queryByText("Local models")).toBeNull();
-    expect(screen.queryByText("Free (OpenRouter)")).toBeNull();
-    expect(screen.getByText("Dyad Free")).toBeTruthy();
-    expect(screen.getByText("2/5 left")).toBeTruthy();
-    expect(screen.getByText("Data sharing")).toBeTruthy();
-    expect(
-      screen
-        .getByText("Dyad Free")
-        .closest("button")
-        ?.getAttribute("aria-label"),
-    ).toContain("2/5 left. Data sharing");
     expect(screen.getByText("All models")).toBeTruthy();
   });
 
   it("keeps All models stationary while the cloud catalog loads", () => {
+    mocks.settings.recentModels = [{ provider: "openai", name: "gpt-5" }];
     mocks.catalogLoading = true;
     const { rerender } = render(<ModelPicker />);
     const allModelsTrigger = screen.getByText("All models").closest("button");
@@ -727,13 +690,12 @@ describe("ModelPicker", () => {
     expect(screen.getByText("All models").closest("button")).toBe(
       allModelsTrigger,
     );
-    expect(
-      allModelsTrigger?.compareDocumentPosition(
-        document.querySelector(
-          '[data-model-provider="auto"][data-model-name="auto"]',
-        )!,
-      ) ?? 0,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const recentRow = document.querySelector(
+      '[data-model-provider="openai"][data-model-name="gpt-5"]',
+    )!;
+    expect(allModelsTrigger?.compareDocumentPosition(recentRow) ?? 0).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 
   it("keeps All models as the only catalog entry before quick choices", () => {
@@ -753,7 +715,6 @@ describe("ModelPicker", () => {
         provider: "openrouter",
         name: "anthropic/claude-sonnet-4.5",
       },
-      { provider: "auto", name: "auto-sidekick" },
     ];
 
     render(<ModelPicker />);
@@ -761,14 +722,18 @@ describe("ModelPicker", () => {
     expect(screen.getByText("Recent")).toBeTruthy();
     expect(screen.getByText("GPT 5")).toBeTruthy();
     expect(screen.getAllByText("Claude Sonnet 4.5")[0]).toBeTruthy();
-    const gptRow = screen.getByText("GPT 5").closest("button")!;
-    expect(within(gptRow).queryByText("OpenAI")).toBeNull();
-    expect(gptRow.getAttribute("aria-label")).not.toContain("OpenAI");
-    expect(screen.getAllByText("Auto Sidekick")).toHaveLength(1);
+    // The keyless OpenRouter recent renders locked, pointing at its own key.
+    const claudeRow = screen
+      .getAllByText("Claude Sonnet 4.5")[0]
+      .closest("button")!;
+    expect(claudeRow.getAttribute("aria-label")).toContain(
+      "requires an API key from OpenRouter",
+    );
   });
 
   it("preserves unresolved cloud history when adding a recent model", async () => {
     mocks.renderSubContent = true;
+    mocks.settings.providerSettings.xai = { apiKey: { value: "test-xai-key" } };
     mocks.settings.recentModels = [
       { provider: "openai", name: "deleted-model" },
       { provider: "openai", name: "gpt-5" },
@@ -842,30 +807,10 @@ describe("ModelPicker", () => {
     expect(() => rerender(<ModelPicker />)).not.toThrow();
     expect(screen.getByTestId("model-picker")).toBeTruthy();
   });
-
-  it("preserves the selected-model fallback when switching to Auto", async () => {
-    mocks.settings.selectedModel = { provider: "openai", name: "gpt-5" };
-    mocks.settings.recentModels = undefined;
-
-    render(<ModelPicker />);
-    fireEvent.click(
-      document.querySelector(
-        '[data-model-provider="auto"][data-model-name="auto"]',
-      )!,
-    );
-
-    await waitFor(() => {
-      expect(mocks.updateSettings).toHaveBeenCalledWith({
-        selectedModel: { provider: "auto", name: "auto" },
-        recentModels: [{ provider: "openai", name: "gpt-5" }],
-      });
-    });
-  });
-
   it("uses the active chat model to seed fallback recents", async () => {
     mocks.pathname = "/chat";
     mocks.search = { id: 42 };
-    mocks.settings.selectedModel = { provider: "auto", name: "auto" };
+    mocks.settings.selectedModel = { provider: "openai", name: "gpt-5-mini" };
     mocks.settings.recentModels = undefined;
     mocks.chat = {
       id: 42,
@@ -878,10 +823,11 @@ describe("ModelPicker", () => {
     };
 
     render(<ModelPicker />);
+    // Trigger shows the chat model plus its Recent row.
     expect(screen.getAllByText("GPT 5")).toHaveLength(2);
     fireEvent.click(
       document.querySelector(
-        '[data-model-provider="auto"][data-model-name="auto"]',
+        '[data-model-provider="openai"][data-model-name="gpt-5"]',
       )!,
     );
 
@@ -909,15 +855,19 @@ describe("ModelPicker", () => {
     }
   });
 
-  it("filters hidden Pro models out of Recent", () => {
+  it("shows keyless free models as locked Recent rows", () => {
     mocks.settings.recentModels = [
       { provider: "openrouter", name: "openrouter/free" },
     ];
 
     render(<ModelPicker />);
 
-    expect(screen.queryByText("Recent")).toBeNull();
-    expect(screen.queryByText("Free (OpenRouter)")).toBeNull();
+    expect(screen.getByText("Recent")).toBeTruthy();
+    const row = screen.getByText("Free (OpenRouter)").closest("button")!;
+    expect(row.getAttribute("data-locked")).toBe("true");
+    expect(row.getAttribute("aria-label")).toContain(
+      "requires an API key from OpenRouter",
+    );
   });
 
   it("uses custom model ids for Recent keys and selection", () => {
@@ -1171,47 +1121,13 @@ describe("ModelPicker", () => {
     ).toBeTruthy();
     expect(screen.getAllByText("Vertex Gemini 2.5 Pro")).toHaveLength(1);
   });
-
-  it("selects Auto Sidekick and moves Build mode to Agent", async () => {
-    render(<ModelPicker />);
-
-    fireEvent.click(screen.getByText("Auto Sidekick").closest("button")!);
-
-    await waitFor(() => {
-      expect(mocks.updateSettings).toHaveBeenCalledWith({
-        selectedModel: {
-          name: "auto-sidekick",
-          provider: "auto",
-        },
-        selectedChatMode: "local-agent",
-      });
-    });
-  });
-
-  it("shows the Auto Sidekick display name in the selected-model trigger", () => {
-    mocks.settings.selectedModel = {
-      name: "auto-sidekick",
-      provider: "auto",
-    };
-
-    render(<ModelPicker />);
-
-    expect(screen.getByTestId("model-picker").textContent).toContain(
-      "Auto Sidekick",
-    );
-    expect(screen.getByTestId("model-picker").textContent).not.toContain(
-      "Medium",
-    );
-    expect(screen.getByTestId("model-picker").textContent).not.toContain(
-      "auto-sidekick",
-    );
-  });
-
   it("omits effort from the trigger and selects catalog-defined effort from a model submenu", async () => {
     mocks.renderSubContent = true;
     render(<ModelPicker />);
 
-    expect(screen.getByTestId("model-picker").textContent).toContain("Auto");
+    expect(screen.getByTestId("model-picker").textContent).toContain(
+      "GPT 5 Mini",
+    );
     expect(screen.getByTestId("model-picker").textContent).not.toContain(
       "Medium",
     );
@@ -1340,63 +1256,6 @@ describe("ModelPicker", () => {
     expect(mocks.updateChat).not.toHaveBeenCalled();
   });
 
-  it("selects a subscription-eligible model in an existing chat without replacing its history", async () => {
-    mocks.renderSubContent = true;
-    mocks.pathname = "/chat";
-    mocks.search = { id: 42 };
-    mocks.chat = {
-      id: 42,
-      messages: [{ id: 1 }],
-      modelSelection: { provider: "auto", name: "auto", effortLevel: "medium" },
-    };
-    render(<ModelPicker />);
-    fireEvent.click(screen.getAllByText("GPT 5")[0]);
-    await waitFor(() =>
-      expect(mocks.setChatSelection).toHaveBeenCalledWith({
-        modelSelection: expect.objectContaining({
-          provider: "openai",
-          name: "gpt-5",
-        }),
-      }),
-    );
-    expect(mocks.chat.messages).toEqual([{ id: 1 }]);
-    expect(mocks.navigate).not.toHaveBeenCalled();
-  });
-
-  it.each([false, true])(
-    "replaces price with ChatGPT plan for subscription models (selected: %s)",
-    (selected) => {
-      mocks.renderSubContent = true;
-      if (selected) {
-        mocks.settings.selectedModel = { provider: "openai", name: "gpt-5" };
-      }
-      render(<ModelPicker />);
-
-      const row = screen.getAllByRole("button", {
-        name: /^GPT 5\. ChatGPT plan\./,
-      })[0];
-      expect(within(row).getByText("ChatGPT plan")).toBeTruthy();
-      expect(within(row).queryByTestId("price-badge")).toBeNull();
-      expect(row.getAttribute("aria-label")).toContain("ChatGPT plan");
-      expect(row.getAttribute("aria-label")).not.toContain("Price:");
-    },
-  );
-
-  it.each(["disconnected", "pro"])(
-    "keeps the price badge when subscription usage is %s",
-    (mode) => {
-      mocks.renderSubContent = true;
-      if (mode === "disconnected") mocks.subscriptionConnected = false;
-      else mocks.settings.proModelUsage = "pro";
-      render(<ModelPicker />);
-
-      const row = screen.getAllByText("GPT 5")[0].closest("button")!;
-      expect(within(row).queryByText("ChatGPT plan")).toBeNull();
-      expect(within(row).getByTestId("price-badge")).toBeTruthy();
-      expect(row.getAttribute("aria-label")).toContain("Price:");
-    },
-  );
-
   it("sorts the All models catalog by price and provider", () => {
     mocks.renderSubContent = true;
     render(<ModelPicker />);
@@ -1408,7 +1267,11 @@ describe("ModelPicker", () => {
       "Claude Sonnet 4.5",
       "GPT 5",
     ];
-    const modelOrder = Array.from(document.querySelectorAll("button"))
+    const modelOrder = Array.from(
+      document
+        .querySelector('[data-testid="more-models-submenu"]')
+        ?.querySelectorAll("button") ?? [],
+    )
       .map((button) =>
         modelNames.find((name) =>
           Array.from(button.querySelectorAll("span")).some(
@@ -1427,100 +1290,10 @@ describe("ModelPicker", () => {
     ]);
   });
 
-  it("keeps the non-Pro root compact while preserving its Dyad choices", () => {
-    mocks.settings.enableDyadPro = false;
-    mocks.settings.providerSettings.auto.apiKey.value = "";
-
-    render(<ModelPicker />);
-
-    expect(screen.queryByText("Auto Sidekick")).toBeNull();
-    expect(screen.queryByText("Auto (balanced)")).toBeNull();
-    expect(screen.queryByText("GPT 5")).toBeNull();
-    expect(screen.getByText("All models")).toBeTruthy();
-    expect(screen.queryByText("Other AI providers")).toBeNull();
-    expect(screen.queryByText("Dyad Free")).toBeNull();
-    expect(screen.getByText("Free (OpenRouter)")).toBeTruthy();
-  });
-
-  it("shows Auto (balanced) to Dyad Pro users", () => {
-    render(<ModelPicker />);
-
-    expect(screen.getByText("Auto (balanced)")).toBeTruthy();
-  });
-
-  it.each([true, false])(
-    "only defers OpenAI locks while loading (%s)",
-    (loading) => {
-      mocks.subscriptionLoading = loading;
-      mocks.subscriptionUnavailable = true;
-      mocks.settings.enableDyadPro = false;
-      mocks.settings.providerSettings.auto.apiKey.value = "";
-      mocks.renderSubContent = true;
-      render(<ModelPicker />);
-      expect(screen.getByText("GPT 5").closest("button")?.dataset.locked).toBe(
-        loading ? undefined : "true",
-      );
-      expect(screen.queryByText("ChatGPT plan")).toBeNull();
-    },
-  );
-
-  it("unlocks only subscription-supported models for free users", async () => {
-    mocks.settings.enableDyadPro = false;
-    mocks.settings.providerSettings.auto.apiKey.value = "";
-    mocks.renderSubContent = true;
-    render(<ModelPicker />);
-    const supported = screen.getByText("GPT 5").closest("button")!;
-    expect(supported.dataset.locked).toBeUndefined();
-    expect(within(supported).getByText("ChatGPT plan")).toBeTruthy();
-    expect(
-      screen.getByText("GPT 5 Mini").closest("button")?.dataset.locked,
-    ).toBe("true");
-    fireEvent.click(supported);
-    await waitFor(() =>
-      expect(mocks.updateSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          selectedModel: expect.objectContaining({
-            provider: "openai",
-            name: "gpt-5",
-          }),
-        }),
-      ),
-    );
-  });
-
-  it("marks models without a provider key as locked for non-Pro users", () => {
-    mocks.subscriptionConnected = false;
-    mocks.settings.enableDyadPro = false;
-    mocks.settings.providerSettings.auto.apiKey.value = "";
-    mocks.settings.providerSettings.openrouter.apiKey.value = "openrouter-key";
-    mocks.renderSubContent = true;
-
-    render(<ModelPicker />);
-
-    expect(screen.getByText("GPT 5").closest("button")?.dataset.locked).toBe(
-      "true",
-    );
-    expect(
-      screen
-        .getByText("GPT 5")
-        .closest("button")
-        ?.querySelector("[data-effort-chevron]"),
-    ).toBeNull();
-    expect(
-      screen.getAllByText("Claude Sonnet 4.5")[0].closest("button")?.dataset
-        .locked,
-    ).toBeUndefined();
-    expect(
-      document.querySelector<HTMLElement>(
-        '[data-model-provider="auto"][data-model-name="auto"]',
-      )?.dataset.locked,
-    ).toBeUndefined();
-  });
-
   it("opens the unlock dialog instead of selecting a locked model", () => {
     mocks.subscriptionConnected = false;
     mocks.settings.enableDyadPro = false;
-    mocks.settings.providerSettings.auto.apiKey.value = "";
+    mocks.settings.providerSettings.openai.apiKey.value = "";
     mocks.renderSubContent = true;
 
     render(<ModelPicker />);
@@ -1532,44 +1305,20 @@ describe("ModelPicker", () => {
       "model-picker:locked-model-click",
       { provider: "openai", model: "gpt-5" },
     );
-    expect(screen.getByText("Unlock GPT 5 with Dyad Pro")).toBeTruthy();
+    expect(
+      screen.getByText("Use GPT 5 with your own OpenAI API key"),
+    ).toBeTruthy();
   });
-
-  it("opens the Pro upgrade page from the unlock dialog", () => {
-    mocks.subscriptionConnected = false;
-    mocks.settings.enableDyadPro = false;
-    mocks.settings.providerSettings.auto.apiKey.value = "";
-    mocks.renderSubContent = true;
-
-    render(<ModelPicker />);
-
-    fireEvent.click(screen.getByText("GPT 5").closest("button")!);
-    fireEvent.click(screen.getByText("Get Dyad Pro"));
-
-    expect(mocks.openExternalUrl).toHaveBeenCalledWith(
-      expect.stringContaining("utm_campaign=model-picker-locked-model"),
-    );
-    expect(mocks.posthogCapture).toHaveBeenCalledWith(
-      "model-picker:upgrade-click",
-      {
-        source: "locked-model-dialog",
-        provider: "openai",
-        model: "gpt-5",
-      },
-    );
-    expect(screen.queryByText("Get Dyad Pro")).toBeNull();
-  });
-
   it("navigates to provider settings from the unlock dialog own-key link", () => {
     mocks.subscriptionConnected = false;
     mocks.settings.enableDyadPro = false;
-    mocks.settings.providerSettings.auto.apiKey.value = "";
+    mocks.settings.providerSettings.openai.apiKey.value = "";
     mocks.renderSubContent = true;
 
     render(<ModelPicker />);
 
     fireEvent.click(screen.getByText("GPT 5").closest("button")!);
-    fireEvent.click(screen.getByText(/use your own/));
+    fireEvent.click(screen.getByText("Add OpenAI API key"));
 
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: "/settings/providers/$provider",
@@ -1620,14 +1369,14 @@ describe("ModelPicker", () => {
   it("labels locked models for assistive tech", () => {
     mocks.subscriptionConnected = false;
     mocks.settings.enableDyadPro = false;
-    mocks.settings.providerSettings.auto.apiKey.value = "";
+    mocks.settings.providerSettings.openai.apiKey.value = "";
     mocks.renderSubContent = true;
 
     render(<ModelPicker />);
 
     expect(
       screen.getByText("GPT 5").closest("button")?.getAttribute("aria-label"),
-    ).toBe("GPT 5 — requires Dyad Pro or an API key from OpenAI");
+    ).toBe("GPT 5 — requires an API key from OpenAI");
   });
 
   it("points locked free models at an OpenRouter key instead of Pro", () => {
@@ -1657,76 +1406,14 @@ describe("ModelPicker", () => {
     });
     expect(mocks.openExternalUrl).not.toHaveBeenCalled();
   });
-
-  it("shows the unlock-all footer only for non-Pro users", () => {
-    mocks.settings.enableDyadPro = false;
-    mocks.settings.providerSettings.auto.apiKey.value = "";
-
-    render(<ModelPicker />);
-
-    fireEvent.click(
-      screen.getByText("Unlock all models with Dyad Pro").closest("button")!,
-    );
-
-    expect(mocks.openExternalUrl).toHaveBeenCalledWith(
-      expect.stringContaining("utm_campaign=model-picker-unlock-all"),
-    );
-    expect(mocks.posthogCapture).toHaveBeenCalledWith(
-      "model-picker:upgrade-click",
-      { source: "unlock-all-footer" },
-    );
-  });
-
   it("hides the unlock-all footer for Pro users", () => {
     render(<ModelPicker />);
 
     expect(screen.queryByText("Unlock all models with Dyad Pro")).toBeNull();
     expect(document.querySelector("[data-locked]")).toBeNull();
   });
-
-  it("shows data sharing disclosure on Auto for non-Pro users with an OpenRouter key", () => {
-    mocks.settings.enableDyadPro = false;
-    mocks.settings.providerSettings.auto.apiKey.value = "";
-    mocks.settings.providerSettings.openrouter.apiKey.value = "openrouter-key";
-
-    render(<ModelPicker />);
-
-    const autoRow = document.querySelector<HTMLElement>(
-      '[data-model-provider="auto"][data-model-name="auto"]',
-    );
-    expect(autoRow?.textContent).toContain("Data sharing");
-    expect(autoRow?.getAttribute("aria-label")).toContain("Data sharing");
-  });
-
-  it("shows data sharing disclosure on Auto for non-Pro users with OPENROUTER_API_KEY", () => {
-    mocks.settings.enableDyadPro = false;
-    mocks.settings.providerSettings.auto.apiKey.value = "";
-    mocks.envVars.OPENROUTER_API_KEY = "openrouter-env-key";
-
-    render(<ModelPicker />);
-
-    expect(
-      document.querySelector<HTMLElement>(
-        '[data-model-provider="auto"][data-model-name="auto"]',
-      )?.textContent,
-    ).toContain("Data sharing");
-  });
-
-  it("does not show data sharing disclosure on Auto without an OpenRouter key", () => {
-    mocks.settings.enableDyadPro = false;
-    mocks.settings.providerSettings.auto.apiKey.value = "";
-
-    render(<ModelPicker />);
-
-    expect(
-      document.querySelector<HTMLElement>(
-        '[data-model-provider="auto"][data-model-name="auto"]',
-      )?.textContent,
-    ).not.toContain("Data sharing");
-  });
-
-  it("shows data sharing disclosure on the top-level Free OpenRouter model", () => {
-    mocks.settings.enableDyadPro = false;
+  it("shows data sharing disclosure on keyless free OpenRouter models", () => {
+    mocks.renderSubContent = true;
     mocks.settings.providerSettings.auto.apiKey.value = "";
 
     render(<ModelPicker />);
@@ -1744,114 +1431,10 @@ describe("ModelPicker", () => {
 
     render(<ModelPicker />);
 
-    expect(screen.getAllByText("Free (OpenRouter)").length).toBe(2);
-    expect(screen.getAllByText("Data sharing").length).toBeGreaterThan(1);
+    expect(screen.getAllByText("Free (OpenRouter)").length).toBe(1);
+    expect(screen.getAllByText("Data sharing").length).toBeGreaterThan(0);
   });
-
-  it("selects flat Pro models with their source provider", async () => {
-    mocks.renderSubContent = true;
-    render(<ModelPicker />);
-
-    fireEvent.click(screen.getByText("GPT 5").closest("button")!);
-
-    expect(mocks.updateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        selectedModel: expect.objectContaining({
-          name: "gpt-5",
-          provider: "openai",
-        }),
-        recentModels: [{ name: "gpt-5", provider: "openai" }],
-      }),
-    );
-    await waitFor(() => {
-      expect(mocks.invalidateQueries).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it("hides Dyad Free for Dyad Pro trial users", () => {
-    mocks.isTrial = true;
-
-    render(<ModelPicker />);
-
-    expect(screen.queryByText("Dyad Free")).toBeNull();
-    expect(
-      screen.getByText("Upgrade from Dyad Pro trial to unlock more models."),
-    ).toBeTruthy();
-    const autoRow = document.querySelector<HTMLElement>(
-      '[data-model-provider="auto"][data-model-name="auto"]',
-    )!;
-    expect(
-      autoRow.querySelector("[data-effort-chevron]")?.previousElementSibling
-        ?.textContent,
-    ).toBe("Med");
-  });
-
-  it("does not select Dyad Free when quota is exhausted", () => {
-    mocks.freeModelQuota.isQuotaExceeded = true;
-    mocks.freeModelQuota.messagesRemaining = 0;
-    mocks.freeModelQuota.quotaStatus = {
-      messagesUsed: 5,
-      messagesLimit: 5,
-      messagesRemaining: 0,
-      isQuotaExceeded: true,
-      resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
-    };
-
-    render(<ModelPicker />);
-
-    fireEvent.click(screen.getByText("Dyad Free").closest("button")!);
-
-    expect(mocks.updateSettings).not.toHaveBeenCalled();
-  });
-
-  it("moves Build mode to Agent when selecting Dyad Free", async () => {
-    render(<ModelPicker />);
-
-    fireEvent.click(screen.getByText("Dyad Free").closest("button")!);
-
-    await waitFor(() => {
-      expect(mocks.updateSettings).toHaveBeenCalledWith({
-        selectedModel: expect.objectContaining({
-          name: "free-pro",
-          provider: "auto",
-        }),
-        selectedChatMode: "local-agent",
-        defaultChatMode: "local-agent",
-      });
-    });
-  });
-
-  it("updates an established chat model and fallback mode atomically", async () => {
-    mocks.pathname = "/chat";
-    mocks.search = { id: 42 };
-    mocks.chat = {
-      id: 42,
-      messages: [{ id: 1 }],
-      modelSelection: {
-        provider: "openai",
-        name: "gpt-5",
-        effortLevel: "high",
-      },
-    };
-
-    render(<ModelPicker />);
-    fireEvent.click(screen.getByText("Dyad Free").closest("button")!);
-
-    await waitFor(() => {
-      expect(mocks.setChatSelection).toHaveBeenCalledWith({
-        chatMode: "local-agent",
-        modelSelection: expect.objectContaining({
-          name: "free-pro",
-          provider: "auto",
-        }),
-      });
-    });
-    expect(mocks.setChatMode).not.toHaveBeenCalled();
-    expect(mocks.setChatModelSelection).not.toHaveBeenCalled();
-  });
-
-  it("shows direct models without subscription or Dyad Free labels in BYO mode", () => {
-    mocks.settings.proModelUsage = "api-key";
+  it("shows direct models without subscription labels in BYO mode", () => {
     mocks.renderSubContent = true;
     render(<ModelPicker />);
     expect(screen.queryByText("Dyad Free")).toBeNull();
@@ -1865,487 +1448,5 @@ describe("ModelPicker", () => {
         '[data-model-provider="openrouter"][data-model-name="openrouter/free"]',
       ),
     ).not.toBeNull();
-  });
-
-  it("shows Dyad Free quota as unavailable when the quota fetch fails", () => {
-    mocks.freeModelQuota.error = new Error("quota unavailable");
-    mocks.freeModelQuota.quotaStatus = null;
-
-    render(<ModelPicker />);
-
-    expect(screen.getByText("Unavailable")).toBeTruthy();
-    expect(screen.queryByText("10/10 left")).toBeNull();
-  });
-});
-
-describe("Claude Code subscription picker", () => {
-  beforeEach(() => {
-    mocks.isTrial = false;
-    mocks.anthropicModels = [];
-    mocks.settings.proModelUsage = "subscription";
-    mocks.settings.recentModels = [];
-    mocks.settings.selectedModel = { provider: "auto", name: "auto" };
-    mocks.renderSubContent = true;
-    mocks.claudeStatus.compatible = true;
-    mocks.claudeModels = [
-      { value: "sonnet", displayName: "sonnet", description: "" },
-    ];
-    mocks.claudeModelsError = false;
-    mocks.refetchClaudeModels.mockClear();
-    mocks.refetchClaudeStatus.mockClear();
-    Object.assign(mocks.settings, { enableClaudeCodeSubscription: true });
-    mocks.pathname = "/chat";
-    mocks.search = { id: 7 };
-    mocks.chat = {
-      id: 7,
-      appId: 9,
-      executionBackend: "dyad",
-      messages: [{ id: 1 }],
-      modelSelection: { provider: "auto", name: "auto", effortLevel: "medium" },
-    };
-    mocks.claudeStatus.connected = true;
-    mocks.createChat.mockClear();
-    mocks.setChatSelection.mockClear();
-  });
-  it("renders discovered labels and selects the CLI value, including new model variants", async () => {
-    mocks.chat!.messages = [];
-    mocks.claudeModels = [
-      {
-        value: "opus[1m]",
-        displayName: "Opus (1M context)",
-        description: "From installed CLI",
-      },
-    ];
-    render(<ModelPicker />);
-    expect(screen.queryByText("Claude Code — sonnet")).toBeNull();
-    fireEvent.click(screen.getByText("Opus (1M context)"));
-    await waitFor(() =>
-      expect(mocks.setChatSelection).toHaveBeenCalledWith({
-        modelSelection: expect.objectContaining({
-          provider: "claude-code",
-          name: "opus[1m]",
-        }),
-      }),
-    );
-  });
-  it.each([
-    ["Fable", "Fable"],
-    ["Default (recommended)", "Default"],
-    ["Opus (1M context)", "Opus"],
-  ])(
-    "shows %s without parenthetical details before the backend",
-    (displayName, shortName) => {
-      mocks.chat!.modelSelection = {
-        provider: "claude-code",
-        name: "claude-fable-5-1[1m]",
-        effortLevel: "medium",
-      };
-      mocks.claudeModels = [
-        {
-          value: "claude-fable-5-1[1m]",
-          displayName,
-          description: "",
-        },
-      ];
-      render(<ModelPicker />);
-      const trigger = screen.getByTestId("model-picker");
-      expect(trigger.textContent).toBe(`${shortName} (Claude Code)`);
-      expect(trigger.getAttribute("title")).toBe(`${shortName} (Claude Code)`);
-    },
-  );
-  it.each(["loading", "error", "empty"])(
-    "shows the %s catalog state without hardcoded choices",
-    (state) => {
-      mocks.claudeModels = state === "empty" ? [] : undefined;
-      mocks.claudeModelsError = state === "error";
-      render(<ModelPicker />);
-      expect(screen.queryByText("Claude Code — sonnet")).toBeNull();
-      expect(
-        document.querySelector(
-          '[data-model-provider="claude-code"][data-model-name="claude-sonnet-4-5"]',
-        ),
-      ).not.toBeNull();
-      if (state === "error")
-        expect(
-          screen.getByText(/Could not load Claude Code suggestions/),
-        ).toBeTruthy();
-    },
-  );
-  it("refreshes both the connection and the model catalog", () => {
-    render(<ModelPicker />);
-    fireEvent.click(screen.getByRole("button", { name: "Refresh connection" }));
-    expect(mocks.refetchClaudeModels).toHaveBeenCalledOnce();
-    expect(mocks.forceStatus).toHaveBeenCalledWith({ force: true });
-  });
-  it.each(["claude-fable-5", "claude-fable-5-1"])(
-    "routes %s through Claude Code without substituting versions",
-    async (name) => {
-      mocks.chat!.messages = [];
-      mocks.anthropicModels = [
-        {
-          apiName: "claude-fable-5",
-          displayName: "Claude Fable 5",
-          dollarSigns: 5,
-        },
-        {
-          apiName: "claude-fable-5-1",
-          displayName: "Claude Fable 5.1",
-          dollarSigns: 3,
-        },
-      ];
-      mocks.claudeModels = [
-        {
-          value: "claude-fable-5-1[1m]",
-          resolvedModel: "claude-fable-5-1",
-          displayName: "Fable",
-          description: "",
-        },
-      ];
-      render(<ModelPicker />);
-      const row = document.querySelector(
-        `[data-model-provider="claude-code"][data-model-name="${name}"]`,
-      )!;
-      expect(within(row as HTMLElement).getByText("Claude Code")).toBeTruthy();
-      expect(row.querySelector("[data-effort-chevron]")).toBeNull();
-      expect(
-        document.querySelector(
-          `[data-model-provider="anthropic"][data-model-name="${name}"]`,
-        ),
-      ).toBeNull();
-      expect(
-        document.querySelector('[data-model-name="claude-fable-5-1[1m]"]'),
-      ).toBeNull();
-      fireEvent.click(row);
-      await waitFor(() =>
-        expect(mocks.setChatSelection).toHaveBeenCalledWith({
-          modelSelection: expect.objectContaining({
-            provider: "claude-code",
-            name,
-          }),
-        }),
-      );
-    },
-  );
-  it("preserves the existing Fable 5 API selection until a backend switch is confirmed", () => {
-    mocks.anthropicModels = [
-      { apiName: "claude-fable-5", displayName: "Claude Fable 5" },
-    ];
-    mocks.chat!.modelSelection = {
-      provider: "anthropic",
-      name: "claude-fable-5",
-      effortLevel: "medium",
-    };
-    render(<ModelPicker />);
-    expect(screen.getByTestId("model-picker").textContent).toBe(
-      "Claude Fable 5",
-    );
-    expect(mocks.setChatSelection).not.toHaveBeenCalled();
-    fireEvent.click(
-      document.querySelector(
-        '[data-model-provider="claude-code"][data-model-name="claude-fable-5"]',
-      )!,
-    );
-    expect(
-      screen.getByText("Start a new chat with Claude Code — Fable 5?"),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByText("Cancel"));
-    expect(mocks.createChat).not.toHaveBeenCalled();
-  });
-  it("restores API routing when Pro usage is selected", async () => {
-    mocks.settings.proModelUsage = "pro";
-    mocks.anthropicModels = [
-      { apiName: "claude-fable-5", displayName: "Claude Fable 5" },
-    ];
-    render(<ModelPicker />);
-    expect(
-      document.querySelector('[data-model-provider="claude-code"]'),
-    ).toBeNull();
-    fireEvent.click(
-      document.querySelector(
-        '[data-model-provider="anthropic"][data-model-name="claude-fable-5"]',
-      )!,
-    );
-    await waitFor(() =>
-      expect(mocks.setChatSelection).toHaveBeenCalledWith({
-        modelSelection: expect.objectContaining({
-          provider: "anthropic",
-          name: "claude-fable-5",
-        }),
-      }),
-    );
-  });
-  it("places Claude Code status and usage in a branded subscription submenu", () => {
-    mocks.renderSubContent = false;
-    render(<ModelPicker />);
-    const trigger = screen.getByRole("button", {
-      name: "Claude Code subscription. Experimental. Open submenu.",
-    });
-    expect(trigger.querySelector("svg")).not.toBeNull();
-    expect(screen.queryByText("Connected")).toBeNull();
-    expect(screen.queryByText("Refresh connection")).toBeNull();
-    expect(screen.queryByText("Claude Code — sonnet")).toBeNull();
-  });
-  it("keeps Claude Code catalog choices available during a Dyad trial", () => {
-    mocks.isTrial = true;
-    render(<ModelPicker />);
-    expect(
-      document.querySelector(
-        '[data-model-provider="claude-code"][data-model-name="sonnet"]',
-      ),
-    ).not.toBeNull();
-    expect(
-      document.querySelector(
-        '[data-model-provider="openai"][data-model-name="gpt-5"]',
-      ),
-    ).toBeNull();
-    mocks.isTrial = false;
-  });
-  it("consolidates API and Claude Code recent models into the CLI route", () => {
-    mocks.anthropicModels = [
-      { apiName: "claude-fable-5", displayName: "Claude Fable 5" },
-    ];
-    mocks.settings.recentModels = [
-      { provider: "anthropic", name: "claude-fable-5" },
-      { provider: "claude-code", name: "claude-fable-5" },
-    ];
-    render(<ModelPicker />);
-    expect(
-      document.querySelectorAll(
-        '[data-model-provider="anthropic"][data-model-name="claude-fable-5"]',
-      ),
-    ).toHaveLength(0);
-    // One CLI entry in All models and one in Recent, regardless of API history.
-    expect(
-      document.querySelectorAll(
-        '[data-model-provider="claude-code"][data-model-name="claude-fable-5"]',
-      ),
-    ).toHaveLength(2);
-  });
-  it("hides cached catalog choices when discovery fails", () => {
-    mocks.claudeModelsError = true;
-    render(<ModelPicker />);
-    expect(screen.queryByText("Claude Code — sonnet")).toBeNull();
-  });
-  it.each(["connected", "compatible"] as const)(
-    "keeps API catalog routes when %s is false",
-    (field) => {
-      mocks.claudeStatus[field] = false;
-      render(<ModelPicker />);
-      expect(
-        document.querySelector('[data-model-provider="claude-code"]'),
-      ).toBeNull();
-      expect(
-        document.querySelector(
-          '[data-model-provider="openrouter"][data-model-name="anthropic/claude-sonnet-4.5"]',
-        ),
-      ).not.toBeNull();
-    },
-  );
-  it.each(["dyad", "claude-code"] as const)(
-    "switches an empty %s chat in place without asking for a new chat",
-    async (backend) => {
-      mocks.chat!.messages = [];
-      mocks.chat!.executionBackend = backend;
-      mocks.chat!.modelSelection = undefined;
-      render(<ModelPicker />);
-      fireEvent.click(
-        backend === "dyad"
-          ? document.querySelector(
-              '[data-model-provider="claude-code"][data-model-name="sonnet"]',
-            )!
-          : document.querySelector(
-              '[data-model-provider="auto"][data-model-name="auto"]',
-            )!,
-      );
-      await waitFor(() =>
-        expect(mocks.setChatSelection).toHaveBeenCalledWith({
-          modelSelection: expect.objectContaining({
-            provider: backend === "dyad" ? "claude-code" : "auto",
-          }),
-        }),
-      );
-      expect(screen.queryByText("Start a new chat?")).toBeNull();
-      expect(mocks.createChat).not.toHaveBeenCalled();
-    },
-  );
-  it("selects Claude Code in an empty chat without a consent dialog", async () => {
-    mocks.chat!.messages = [];
-    render(<ModelPicker />);
-    fireEvent.click(
-      document.querySelector(
-        '[data-model-provider="claude-code"][data-model-name="sonnet"]',
-      )!,
-    );
-    expect(screen.queryByText("Use Claude Code subscription?")).toBeNull();
-    expect(screen.queryByText("Start a new chat?")).toBeNull();
-    await waitFor(() => expect(mocks.setChatSelection).toHaveBeenCalled());
-    expect(mocks.createChat).not.toHaveBeenCalled();
-  });
-  it("shows the experiment toggle when disabled while hiding Claude Code model choices", async () => {
-    Object.assign(mocks.settings, {
-      enableClaudeCodeSubscription: false,
-      proModelUsage: "pro",
-      recentModels: [{ provider: "claude-code", name: "sonnet" }],
-    });
-    render(<ModelPicker />);
-    expect(
-      screen.getByRole("button", {
-        name: "Claude Code subscription. Experimental. Open submenu.",
-      }),
-    ).toBeTruthy();
-    expect(screen.queryByText("Claude Code — sonnet")).toBeNull();
-    expect(screen.queryByText("Checking Claude Code connection…")).toBeNull();
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", {
-        name: "Use Claude subscription",
-      }),
-    );
-    await waitFor(() =>
-      expect(mocks.updateSettings).toHaveBeenCalledWith({
-        enableClaudeCodeSubscription: true,
-        proModelUsage: "subscription",
-      }),
-    );
-  });
-  it("preserves the existing chat when backend switching is cancelled", () => {
-    render(<ModelPicker />);
-    fireEvent.click(
-      document.querySelector(
-        '[data-model-provider="claude-code"][data-model-name="sonnet"]',
-      )!,
-    );
-    expect(
-      screen.getByText(
-        "Claude Code can’t continue this conversation. Your current chat will be saved, but its messages won’t carry over.",
-      ),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByText("Cancel"));
-    expect(mocks.createChat).not.toHaveBeenCalled();
-    expect(mocks.setChatSelection).not.toHaveBeenCalled();
-  });
-  it("uses the chat backend rather than the global model", async () => {
-    mocks.chat!.executionBackend = "dyad";
-    mocks.settings.selectedModel = { provider: "claude-code", name: "sonnet" };
-    mocks.renderSubContent = true;
-    render(<ModelPicker />);
-    fireEvent.click(screen.getByText("GPT 5").closest("button")!);
-    await waitFor(() => expect(mocks.setChatSelection).toHaveBeenCalled());
-    expect(screen.queryByText(/Start a new chat with/)).toBeNull();
-    expect(mocks.createChat).not.toHaveBeenCalled();
-  });
-  it("names the destination model when leaving Claude Code and omits the disclosure", () => {
-    mocks.chat!.executionBackend = "claude-code";
-    mocks.chat!.messages = [{ id: 1 }, { id: 2 }];
-    mocks.renderSubContent = true;
-    render(<ModelPicker />);
-    fireEvent.click(screen.getByText("GPT 5").closest("button")!);
-    expect(screen.getByText("Start a new chat with GPT 5?")).toBeTruthy();
-    expect(
-      screen.getByText(
-        "This conversation uses Claude Code and can’t continue with GPT 5. Your current chat will be saved, but its messages won’t carry over.",
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByText(/shell tools are disabled/)).toBeNull();
-  });
-  it("keeps switching between Claude Code models in the same conversation", async () => {
-    mocks.chat!.executionBackend = "claude-code";
-    mocks.chat!.messages = [{ id: 1 }];
-    render(<ModelPicker />);
-    fireEvent.click(
-      document.querySelector(
-        '[data-model-provider="claude-code"][data-model-name="sonnet"]',
-      )!,
-    );
-    await waitFor(() => expect(mocks.setChatSelection).toHaveBeenCalled());
-    expect(screen.queryByText(/Start a new chat with/)).toBeNull();
-  });
-  it("clears a failed backend switch when cancelled and reopened", async () => {
-    mocks.createChat.mockRejectedValueOnce(new Error("Switch failed"));
-    render(<ModelPicker />);
-    const pick = () =>
-      fireEvent.click(
-        document.querySelector(
-          '[data-model-provider="claude-code"][data-model-name="sonnet"]',
-        )!,
-      );
-    pick();
-    fireEvent.click(screen.getByText("Start new chat"));
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toContain("Switch failed"),
-    );
-    fireEvent.click(screen.getByText("Cancel"));
-    pick();
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
-  it("creates a Claude Code chat after only the new-chat confirmation", async () => {
-    render(<ModelPicker />);
-    fireEvent.click(
-      document.querySelector(
-        '[data-model-provider="claude-code"][data-model-name="sonnet"]',
-      )!,
-    );
-    expect(
-      screen.getByText("Start a new chat with Claude Code — sonnet?"),
-    ).toBeTruthy();
-    expect(screen.queryByText(/shell tools are disabled/)).toBeNull();
-    fireEvent.click(screen.getByText("Start new chat"));
-    expect(screen.queryByText("Use Claude Code subscription?")).toBeNull();
-    await waitFor(() => expect(mocks.createChat).toHaveBeenCalled());
-  });
-  it.each(["free-pro", "auto-sidekick"])(
-    "applies compatible mode when switching from Claude to %s",
-    async (name) => {
-      mocks.selectedMode = "build";
-      mocks.chat!.executionBackend = "claude-code";
-      mocks.chat!.messages = [{ id: 1 }];
-      render(<ModelPicker />);
-      fireEvent.click(
-        document.querySelector(
-          `[data-model-provider="auto"][data-model-name="${name}"]`,
-        )!,
-      );
-      fireEvent.click(screen.getByText("Start new chat"));
-      await waitFor(() =>
-        expect(mocks.createChat).toHaveBeenCalledWith(
-          expect.objectContaining({
-            initialChatMode: "local-agent",
-            modelSelection: expect.objectContaining({ provider: "auto", name }),
-          }),
-        ),
-      );
-      expect(mocks.updateSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ selectedChatMode: "local-agent" }),
-      );
-    },
-  );
-  it("creates a new chat in the same app with the chosen backend model", async () => {
-    mocks.settings.recentModels = [{ provider: "openai", name: "gpt-5" }];
-    render(<ModelPicker />);
-    fireEvent.click(
-      document.querySelector(
-        '[data-model-provider="claude-code"][data-model-name="sonnet"]',
-      )!,
-    );
-    fireEvent.click(screen.getByText("Start new chat"));
-    await waitFor(() =>
-      expect(mocks.createChat).toHaveBeenCalledWith(
-        expect.objectContaining({
-          appId: 9,
-          modelSelection: expect.objectContaining({
-            provider: "claude-code",
-            name: "sonnet",
-          }),
-        }),
-      ),
-    );
-    expect(mocks.updateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        recentModels: expect.arrayContaining([
-          { provider: "openai", name: "gpt-5" },
-          { provider: "claude-code", name: "sonnet" },
-        ]),
-      }),
-    );
-    expect(mocks.setChatSelection).not.toHaveBeenCalled();
   });
 });

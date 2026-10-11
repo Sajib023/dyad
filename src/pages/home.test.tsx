@@ -135,24 +135,6 @@ describe("HomePage first-prompt projection", () => {
     mocks.updateSettings.mockReset();
   });
 
-  it("opens the Pro page with home upgrade tracking from the upgrade button", () => {
-    render(<HomePage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Upgrade to Pro" }));
-
-    expect(mocks.openExternalUrl).toHaveBeenCalledWith(
-      "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=home-upgrade-to-pro",
-    );
-  });
-
-  it("does not prompt existing Pro users to upgrade", () => {
-    mocks.hasDyadProApiKey = true;
-
-    render(<HomePage />);
-
-    expect(screen.queryByRole("button", { name: "Upgrade to Pro" })).toBeNull();
-  });
-
   it("submits a captured payload to the machine", () => {
     const attachment = { file: new File(["x"], "x.txt"), type: "chat-context" };
     mocks.attachments = [attachment];

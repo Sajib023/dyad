@@ -18,18 +18,12 @@ afterEach(() => {
   mocks.updateSettings.mockClear();
 });
 describe("Shell experiment", () => {
-  it("persists the top-level setting", () => {
+  it("persists the top-level setting without a Pro gate", () => {
     render(<ShellExperimentSwitch />);
-    fireEvent.click(screen.getByRole("switch", { name: "Shell tool (Pro)" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Shell tool" }));
     expect(mocks.updateSettings).toHaveBeenCalledWith({
       enableShellTool: true,
     });
-  });
-  it("does not allow non-Pro users to enable it", () => {
-    mocks.pro = false;
-    render(<ShellExperimentSwitch />);
-    fireEvent.click(screen.getByRole("switch", { name: "Shell tool (Pro)" }));
-    expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 });
 

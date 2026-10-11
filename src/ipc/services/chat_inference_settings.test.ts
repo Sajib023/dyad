@@ -1,7 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import type { UserSettings } from "@/lib/schemas";
 import { getChatInferenceSettings } from "./chat_inference_settings";
-import { shouldBillChatGPTSubscription } from "./subscription_billing";
 
 const mocks = vi.hoisted(() => ({ settings: vi.fn(), chat: vi.fn() }));
 vi.mock("@/main/settings", () => ({ readSettings: mocks.settings }));
@@ -27,9 +26,6 @@ it.each(["build", "ask", "plan", "local-agent"] as const)(
     mocks.chat.mockResolvedValue({ chatMode: mode });
     const resolved = await getChatInferenceSettings(1);
     expect(resolved.selectedChatMode).toBe(mode);
-    expect(shouldBillChatGPTSubscription(resolved)).toBe(
-      mode === "local-agent",
-    );
   },
 );
 

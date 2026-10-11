@@ -124,9 +124,8 @@ describe("useChatModeToggle", () => {
     expect(result.current.hasManuallySelectedChatMode).toBe(false);
   });
 
-  it("skips Basic Agent when free quota is exhausted", () => {
+  it("cycles from ask to local-agent with no tier restrictions", () => {
     mocks.selectedMode = "ask";
-    mocks.isQuotaExceeded = true;
 
     const { result } = renderHook(() => useChatModeToggle(), {
       wrapper: makeWrapper(),
@@ -134,12 +133,11 @@ describe("useChatModeToggle", () => {
 
     act(() => result.current.toggleChatMode());
 
-    expect(mocks.setChatMode).toHaveBeenCalledWith("plan");
+    expect(mocks.setChatMode).toHaveBeenCalledWith("local-agent");
   });
 
-  it("cycles away from an already-selected exhausted Basic Agent", () => {
+  it("cycles from local-agent to plan", () => {
     mocks.selectedMode = "local-agent";
-    mocks.isQuotaExceeded = true;
 
     const { result } = renderHook(() => useChatModeToggle(), {
       wrapper: makeWrapper(),
@@ -150,9 +148,8 @@ describe("useChatModeToggle", () => {
     expect(mocks.setChatMode).toHaveBeenCalledWith("plan");
   });
 
-  it("skips Build when Dyad Free is selected", () => {
+  it("cycles from plan to build", () => {
     mocks.selectedMode = "plan";
-    mocks.selectedModel = { provider: "auto", name: "free-pro" };
 
     const { result } = renderHook(() => useChatModeToggle(), {
       wrapper: makeWrapper(),
@@ -160,6 +157,6 @@ describe("useChatModeToggle", () => {
 
     act(() => result.current.toggleChatMode());
 
-    expect(mocks.setChatMode).toHaveBeenCalledWith("ask");
+    expect(mocks.setChatMode).toHaveBeenCalledWith("build");
   });
 });

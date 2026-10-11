@@ -114,6 +114,7 @@ describe("readSettings", () => {
           "disableSandboxedE2eTests": false,
           "enableAdvancedSubagents": false,
           "enableAppBlueprint": true,
+          "enableAppPreviewDomains": true,
           "enableAutoReview": false,
           "enableAutoUpdate": true,
           "enableClaudeCodeSubscription": false,
@@ -140,8 +141,8 @@ describe("readSettings", () => {
           "runTypeScriptForWholeProject": false,
           "selectedChatMode": "build",
           "selectedModel": {
-            "name": "auto",
-            "provider": "auto",
+            "name": "claude-sonnet-4-6",
+            "provider": "anthropic",
           },
           "selectedTemplateId": "react",
           "selectedThemeId": "default",
@@ -569,6 +570,7 @@ describe("readSettings", () => {
           "disableSandboxedE2eTests": false,
           "enableAdvancedSubagents": false,
           "enableAppBlueprint": true,
+          "enableAppPreviewDomains": true,
           "enableAutoReview": false,
           "enableAutoUpdate": true,
           "enableClaudeCodeSubscription": false,
@@ -595,8 +597,8 @@ describe("readSettings", () => {
           "runTypeScriptForWholeProject": false,
           "selectedChatMode": "build",
           "selectedModel": {
-            "name": "auto",
-            "provider": "auto",
+            "name": "claude-sonnet-4-6",
+            "provider": "anthropic",
           },
           "selectedTemplateId": "react",
           "selectedThemeId": "default",
@@ -614,8 +616,8 @@ describe("readSettings", () => {
 
       expect(result).toMatchObject({
         selectedModel: {
-          name: "auto",
-          provider: "auto",
+          name: "claude-sonnet-4-6",
+          provider: "anthropic",
         },
         releaseChannel: "stable",
       });
@@ -637,8 +639,8 @@ describe("readSettings", () => {
 
       expect(result).toMatchObject({
         selectedModel: {
-          name: "auto",
-          provider: "auto",
+          name: "claude-sonnet-4-6",
+          provider: "anthropic",
         },
         releaseChannel: "stable",
       });
@@ -705,8 +707,8 @@ describe("readSettings", () => {
       const result = readSettings();
 
       expect(result.selectedModel).toEqual({
-        name: "auto",
-        provider: "auto",
+        name: "claude-sonnet-4-6",
+        provider: "anthropic",
       });
       expect(result.githubAccessToken).toBeUndefined();
     });

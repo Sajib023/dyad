@@ -1,17 +1,11 @@
 import { useCallback, useMemo } from "react";
 import { useShortcut } from "./useShortcut";
 import { usePostHog } from "posthog-js/react";
-import {
-  ChatModeSchema,
-  isDyadProEnabled,
-  type ChatMode,
-} from "../lib/schemas";
+import { ChatModeSchema, type ChatMode } from "../lib/schemas";
 import { useChatMode } from "./useChatMode";
-import { useFreeAgentQuota } from "./useFreeAgentQuota";
 import { useRouterState } from "@tanstack/react-router";
 import { useSetAtom } from "jotai";
 import { hasManuallySelectedChatModeAtom } from "@/atoms/chatAtoms";
-import { isFreeProModel } from "@/lib/freeProModel";
 
 export function getNextAvailableChatMode({
   currentMode,
@@ -41,9 +35,7 @@ export function useChatModeToggle() {
     routerState.location.pathname === "/chat"
       ? (routerState.location.search.id as number | undefined)
       : null;
-  const { selectedMode, selectedModel, setChatMode, settings } =
-    useChatMode(routeChatId);
-  const { isQuotaExceeded } = useFreeAgentQuota();
+  const { selectedMode, setChatMode, settings } = useChatMode(routeChatId);
   const setHasManuallySelectedChatMode = useSetAtom(
     hasManuallySelectedChatModeAtom,
   );
@@ -66,11 +58,11 @@ export function useChatModeToggle() {
     if (!settings || !selectedMode) return;
 
     const currentMode = selectedMode;
-    // Migration on read ensures currentMode is never "agent"
+    // No tiers anymore: every mode is always available.
     const newMode = getNextAvailableChatMode({
       currentMode,
-      canUseBasicAgent: isDyadProEnabled(settings) || !isQuotaExceeded,
-      canUseBuild: !isFreeProModel(selectedModel),
+      canUseBasicAgent: true,
+      canUseBuild: true,
     });
 
     if (routeChatId == null) {
@@ -86,8 +78,6 @@ export function useChatModeToggle() {
     selectedMode,
     setChatMode,
     settings,
-    selectedModel,
-    isQuotaExceeded,
     routeChatId,
     setHasManuallySelectedChatMode,
     posthog,

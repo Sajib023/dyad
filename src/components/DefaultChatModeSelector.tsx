@@ -1,5 +1,4 @@
 import { useSettings } from "@/hooks/useSettings";
-import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { SettingField } from "@/components/settings/SettingField";
 import {
   Select,
@@ -9,45 +8,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ChatMode } from "@/lib/schemas";
-import { isDyadProEnabled, getEffectiveDefaultChatMode } from "@/lib/schemas";
+import { getEffectiveDefaultChatMode } from "@/lib/schemas";
 import { useTranslation } from "react-i18next";
-import { useEffect } from "react";
-import {
-  FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
-  isFreeProBuildModeCombination,
-  isFreeProModel,
-} from "@/lib/freeProModel";
-import { FREE_AGENT_QUOTA_LIMIT } from "@/lib/free_agent_quota_limit";
 
 export function DefaultChatModeSelector() {
   const { settings, updateSettings, envVars } = useSettings();
-  const { quotaStatus } = useFreeAgentQuota();
   const { t } = useTranslation("settings");
-
-  useEffect(() => {
-    if (
-      settings &&
-      isFreeProBuildModeCombination(
-        settings.selectedModel,
-        settings.defaultChatMode,
-      )
-    ) {
-      updateSettings({ defaultChatMode: FREE_PRO_MODEL_FALLBACK_CHAT_MODE });
-    }
-  }, [settings, updateSettings]);
 
   if (!settings) {
     return null;
   }
 
-  const isProEnabled = isDyadProEnabled(settings);
-  const isDyadFreeSelected = isFreeProModel(settings.selectedModel);
   const effectiveDefault = getEffectiveDefaultChatMode(settings, envVars);
 
   const handleDefaultChatModeChange = (value: ChatMode) => {
-    if (isFreeProBuildModeCombination(settings.selectedModel, value)) {
-      return;
-    }
     updateSettings({ defaultChatMode: value });
   };
 
@@ -56,7 +30,7 @@ export function DefaultChatModeSelector() {
       case "build":
         return "Build";
       case "local-agent":
-        return isProEnabled ? "Agent" : "Basic Agent";
+        return "Agent";
       case "ask":
         return "Ask";
       case "plan":
@@ -86,25 +60,17 @@ export function DefaultChatModeSelector() {
         <SelectContent>
           <SelectItem value="local-agent">
             <div className="flex flex-col items-start">
-              <span className="font-medium">
-                {isProEnabled ? "Agent" : "Basic Agent"}
-              </span>
+              <span className="font-medium">Agent</span>
               <span className="text-xs text-muted-foreground">
-                {isProEnabled
-                  ? "Better at bigger tasks"
-                  : quotaStatus?.isQuotaExceeded
-                    ? "Daily limit reached; preference applies after reset"
-                    : `Free tier (${FREE_AGENT_QUOTA_LIMIT} messages/day)`}
+                Better at bigger tasks
               </span>
             </div>
           </SelectItem>
-          <SelectItem value="build" disabled={isDyadFreeSelected}>
+          <SelectItem value="build">
             <div className="flex flex-col items-start">
               <span className="font-medium">Build</span>
               <span className="text-xs text-muted-foreground">
-                {isDyadFreeSelected
-                  ? "Use Agent with Dyad Free"
-                  : "Generate and edit code"}
+                Generate and edit code
               </span>
             </div>
           </SelectItem>

@@ -22,7 +22,6 @@ import { Label } from "@/components/ui/label";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useGenerateImage } from "@/hooks/useGenerateImage";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
-import { AiAccessBanner } from "./ProBanner";
 import { AppSearchSelect } from "./AppSearchSelect";
 import type { ImageThemeMode } from "@/ipc/types";
 
@@ -167,10 +166,9 @@ export function ImageGeneratorDialog({
                   Generate custom images using AI to use in your apps.
                 </p>
                 <p className="text-xs text-muted-foreground/70 mt-2">
-                  Pro-only feature
+                  Unavailable in this build (needs Dyad cloud)
                 </p>
               </div>
-              <AiAccessBanner />
             </div>
           ) : (
             <>

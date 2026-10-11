@@ -20,7 +20,7 @@ it("does not pin initial created/imported chats to a disabled remembered Claude 
     await initialChatExecution(undefined, { ...settings, recentModels: [] }),
   ).toMatchObject({
     executionBackend: "dyad",
-    modelSelection: { provider: "auto", name: "auto" },
+    modelSelection: { provider: "anthropic", name: "claude-sonnet-4-6" },
   });
   expect(
     await initialChatExecution(undefined, {

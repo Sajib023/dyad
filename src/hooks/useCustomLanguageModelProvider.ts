@@ -38,6 +38,7 @@ export function useCustomLanguageModelProvider() {
         id: params.id.trim(),
         name: params.name.trim(),
         apiBaseUrl: params.apiBaseUrl.trim(),
+        apiProtocol: params.apiProtocol ?? "openai",
         envVarName: params.envVarName?.trim() || undefined,
       });
     },
@@ -79,6 +80,7 @@ export function useCustomLanguageModelProvider() {
         id: params.id.trim(),
         name: params.name.trim(),
         apiBaseUrl: params.apiBaseUrl.trim(),
+        apiProtocol: params.apiProtocol ?? "openai",
         envVarName: params.envVarName?.trim() || undefined,
       });
     },
