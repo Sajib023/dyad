@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sign in · Dyad</title>
+    <meta name="robots" content="noindex" />
+    <link rel="stylesheet" href="/auth/auth.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <div class="card">
+        <div class="brand">
+          <div class="logo" aria-hidden="true">D</div>
+          <h1>Dyad</h1>
+        </div>
+        <h2>Sign in to continue</h2>
+        <p class="lede">
+          This Dyad instance is password-protected. Enter the access token
+          shared by the operator.
+        </p>
+        <form id="auth-form" autocomplete="off" novalidate>
+          <label for="token">Access token</label>
+          <input
+            id="token"
+            name="token"
+            type="password"
+            required
+            autofocus
+            spellcheck="false"
+            autocomplete="off"
+            placeholder="Paste your access token"
+          />
+          <button id="auth-submit" type="submit">Sign in</button>
+          <div id="auth-error" class="error" hidden></div>
+        </form>
+        <p class="hint">
+          The token is set via the <code>DYAD_WEB_TOKEN</code> environment
+          variable on the Dyad server. To start a new session without a token,
+          set the env to empty and restart.
+        </p>
+      </div>
+    </main>
+    <script>
+      (function () {
+        var form = document.getElementById("auth-form");
+        var input = document.getElementById("token");
+        var button = document.getElementById("auth-submit");
+        var errorEl = document.getElementById("auth-error");
+        function showError(message) {
+          errorEl.textContent = message;
+          errorEl.hidden = false;
+        }
+        function clearError() {
+          errorEl.textContent = "";
+          errorEl.hidden = true;
+        }
+        form.addEventListener("submit", function (event) {
+          event.preventDefault();
+          clearError();
+          var token = (input.value || "").trim();
+          if (!token) {
+            showError("Please enter the access token.");
+            input.focus();
+            return;
+          }
+          button.disabled = true;
+          button.textContent = "Signing in…";
+          // Redirect to the same path with the token in the query string.
+          // The server will then issue a cookie and the SPA will boot.
+          var target = window.location.pathname || "/";
+          // If the user landed on a deep path like /apps/3, preserve it.
+          window.location.href =
+            target +
+            (target.indexOf("?") === -1 ? "?" : "&") +
+            "token=" +
+            encodeURIComponent(token);
+        });
+      })();
+    </script>
+  </body>
+</html>

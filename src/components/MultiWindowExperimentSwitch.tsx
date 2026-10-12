@@ -1,9 +1,17 @@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useSettings } from "@/hooks/useSettings";
+import { useWebMode } from "@/hooks/useWebMode";
 
 export function MultiWindowExperimentSwitch() {
   const { settings, updateSettings } = useSettings();
+  const isWebMode = useWebMode();
+
+  if (isWebMode) {
+    // Self-hosted web: no native BrowserWindow — "Open in new window" can't
+    // open a sibling native window.
+    return null;
+  }
 
   return (
     <div className="space-y-1.5">

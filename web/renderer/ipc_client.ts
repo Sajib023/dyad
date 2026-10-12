@@ -45,6 +45,9 @@ let socketOpen = false;
 let retryDelayMs = 250;
 let closedByPage = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+const HEARTBEAT_INTERVAL_MS = 25_000;
 
 function isValidDynamicReceiveChannel(channel: string): boolean {
   // Mirrors src/preload.ts — server-generated terminal stream session ids.
@@ -142,6 +145,10 @@ function handleMessage(raw: string): void {
       dispatchEvent(message.ch as string, (message.args as unknown[]) ?? []);
       return;
     }
+    case "p": {
+      // Server pong — round trip is healthy.
+      return;
+    }
     default:
       return;
   }
@@ -162,6 +169,7 @@ function connect(): void {
     socketOpen = true;
     retryDelayMs = 250;
     flushOutboundQueue();
+    startHeartbeat();
   };
 
   ws.onmessage = (event) => {
@@ -175,6 +183,7 @@ function connect(): void {
   ws.onclose = () => {
     socketOpen = false;
     socket = null;
+    stopHeartbeat();
     rejectAllPending(new Error("Dyad web connection lost — reconnecting"));
     scheduleReconnect();
   };
@@ -182,16 +191,49 @@ function connect(): void {
 
 function scheduleReconnect(): void {
   if (closedByPage || reconnectTimer) return;
+  // Exponential backoff with full jitter — without jitter, every client
+  // re-attempts at the same wall-clock instant after a server bounce,
+  // re-creating a thundering herd.
+  const base = retryDelayMs;
+  const delay = Math.floor(Math.random() * base);
+  retryDelayMs = Math.min(retryDelayMs * 2, 5000);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connect();
-  }, retryDelayMs);
-  retryDelayMs = Math.min(retryDelayMs * 2, 5000);
+  }, delay);
+}
+
+function startHeartbeat(): void {
+  stopHeartbeat();
+  heartbeatTimer = setInterval(() => {
+    // Raw ping frame — bypasses the JSON codec, since pings are pure
+    // transport-level liveness and carry no payload.
+    if (socketOpen && socket && socket.readyState === WebSocket.OPEN) {
+      try {
+        socket.send(JSON.stringify({ t: "p" }));
+      } catch {
+        // send failed; onclose will follow.
+      }
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+function stopHeartbeat(): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
 }
 
 const ipcRenderer = {
   invoke: (channel: string, ...args: unknown[]): Promise<unknown> => {
     assertValidInvokeChannel(channel);
+    // The Electron shim's `shell.openExternal` is a no-op in the web build.
+    // Handle it on the renderer side instead of round-tripping a no-op.
+    if (channel === "open-external-url" && typeof args[0] === "string") {
+      openExternalUrl(args[0]);
+      return Promise.resolve(undefined);
+    }
     return ipcRenderer
       .invokeEnvelope(channel, ...args)
       .then((response) =>
@@ -245,6 +287,30 @@ const electron = {
   // Surfaced so the UI (and support docs) can tell web from desktop.
   isWebBuild: true,
 };
+
+/**
+ * Open an external URL in the user's browser. The Electron shim's
+ * `shell.openExternal` is a no-op on the web build, so we intercept
+ * here and use `window.open` directly. Falls back to a new tab the
+ * popup blocker won't kill.
+ */
+function openExternalUrl(url: string): void {
+  try {
+    const target = window.open(url, "_blank", "noopener,noreferrer");
+    if (!target) {
+      // Popup blocked — try a programmatic navigation in this tab.
+      const a = document.createElement("a");
+      a.href = url;
+      a.rel = "noopener noreferrer";
+      a.target = "_blank";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  } catch (error) {
+    console.error("[dyad-web] openExternalUrl failed", error);
+  }
+}
 
 declare global {
   interface Window {

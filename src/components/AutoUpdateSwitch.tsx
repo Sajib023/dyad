@@ -1,4 +1,5 @@
 import { useSettings } from "@/hooks/useSettings";
+import { useWebMode } from "@/hooks/useWebMode";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -8,6 +9,12 @@ import { useTranslation } from "react-i18next";
 export function AutoUpdateSwitch() {
   const { settings, updateSettings } = useSettings();
   const { t } = useTranslation("settings");
+  const isWebMode = useWebMode();
+
+  if (isWebMode) {
+    // Self-hosted web build: the Electron updater doesn't run here.
+    return null;
+  }
 
   if (!settings) {
     return null;

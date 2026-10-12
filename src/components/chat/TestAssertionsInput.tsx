@@ -25,6 +25,7 @@ import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useWebMode } from "@/hooks/useWebMode";
 import { ipc, type Message } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 import { queryKeys } from "@/lib/queryKeys";
@@ -125,6 +126,10 @@ const NO_LIVE_PLANS: LiveAssertionPlans = { tag: null, pendingCount: 0 };
 
 export function TestAssertionsInput() {
   const chatId = useAtomValue(selectedChatIdAtom);
+  const isWebMode = useWebMode();
+  if (isWebMode) {
+    return null;
+  }
   const messages = useChatMessages(chatId);
   const { tag, pendingCount } = useMemo(() => {
     let newest: AssertionsTagSummary | null = null;

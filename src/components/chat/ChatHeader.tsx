@@ -4,6 +4,7 @@ import {
   PlusCircle,
   GitBranch,
   Info,
+  Link2,
   SquareTerminal,
 } from "lucide-react";
 import { PanelRightClose } from "lucide-react";
@@ -103,6 +104,39 @@ export function ChatHeader({
       }
     } else {
       navigate({ to: "/" });
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (typeof window === "undefined") return;
+    const url = window.location.href;
+    try {
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.writeText === "function"
+      ) {
+        await navigator.clipboard.writeText(url);
+        showSuccess("Link copied to clipboard");
+        return;
+      }
+    } catch {
+      // fall through to legacy copy path
+    }
+    // Fallback for environments without the async Clipboard API.
+    const ta = document.createElement("textarea");
+    ta.value = url;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+      showSuccess("Link copied to clipboard");
+    } catch {
+      showError("Couldn't copy link — please copy from the address bar.");
+    } finally {
+      ta.remove();
     }
   };
 
@@ -232,6 +266,24 @@ export function ChatHeader({
               ? "..."
               : `${t("header.versionCount", { count: versions.length })}${versionPostfix}`}
           </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    data-testid="copy-link-button"
+                    onClick={handleCopyLink}
+                    aria-label="Copy link to this chat"
+                    className="cursor-pointer rounded-md p-2 hover:bg-(--background-lightest)"
+                  />
+                }
+              >
+                <Link2 size={16} />
+              </TooltipTrigger>
+              <TooltipContent>Copy link to this chat</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         <div className="flex items-center gap-1">

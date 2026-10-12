@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useSettings } from "@/hooks/useSettings";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
+import { useWebMode } from "@/hooks/useWebMode";
 
 function sendTestNotification() {
   if (
@@ -18,11 +19,13 @@ export function useEnableNotifications() {
   const [showMacGuide, setShowMacGuide] = useState(false);
   const isEnabled = settings?.enableChatEventNotifications === true;
   const isMac = detectIsMac();
+  const isWebMode = useWebMode();
   const openMacGuide = useCallback(() => {
-    if (isMac) {
+    // Self-hosted web: macOS System Settings instructions don't apply.
+    if (isMac && !isWebMode) {
       setShowMacGuide(true);
     }
-  }, [isMac]);
+  }, [isMac, isWebMode]);
 
   const enable = useCallback(async () => {
     if (typeof window.Notification === "undefined") return;

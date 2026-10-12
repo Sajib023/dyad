@@ -4,10 +4,12 @@ import { LightbulbIcon } from "lucide-react";
 import { ErrorComponentProps } from "@tanstack/react-router";
 import { usePostHog } from "posthog-js/react";
 import { ipc } from "@/ipc/types";
+import { useWebMode } from "@/hooks/useWebMode";
 
 export function ErrorBoundary({ error }: ErrorComponentProps) {
   const [isLoading, setIsLoading] = useState(false);
   const posthog = usePostHog();
+  const isWebMode = useWebMode();
 
   useEffect(() => {
     console.error("An error occurred in the route:", error);
@@ -19,6 +21,23 @@ export function ErrorBoundary({ error }: ErrorComponentProps) {
     try {
       // Get system debug info
       const debugInfo = await ipc.system.getSystemDebugInfo();
+
+      // In the web build the debug info describes the *container* (Node path,
+      // platform, pnpm) — not the user's machine. Strip those fields so a
+      // filed issue is not misleading.
+      const systemSection = isWebMode
+        ? `## System Information
+- Dyad Version: ${debugInfo.dyadVersion}
+- Server: self-hosted (container)
+- Browser: ${navigator.userAgent}`
+        : `## System Information
+- Dyad Version: ${debugInfo.dyadVersion}
+- Platform: ${debugInfo.platform}
+- Architecture: ${debugInfo.architecture}
+- Node Version: ${debugInfo.nodeVersion || "Not available"}
+- PNPM Version: ${debugInfo.pnpmVersion || "Not available"}
+- Node Path: ${debugInfo.nodePath || "Not available"}
+- Telemetry ID: ${debugInfo.telemetryId || "Not available"}`;
 
       // Create a formatted issue body with the debug info and error information
       const issueBody = `
@@ -39,14 +58,7 @@ export function ErrorBoundary({ error }: ErrorComponentProps) {
 - Error Message: ${error?.message || "Unknown"}
 ${error?.stack ? `\n\`\`\`\n${error.stack.slice(0, 1000)}\n\`\`\`` : ""}
 
-## System Information
-- Dyad Version: ${debugInfo.dyadVersion}
-- Platform: ${debugInfo.platform}
-- Architecture: ${debugInfo.architecture}
-- Node Version: ${debugInfo.nodeVersion || "Not available"}
-- PNPM Version: ${debugInfo.pnpmVersion || "Not available"}
-- Node Path: ${debugInfo.nodePath || "Not available"}
-- Telemetry ID: ${debugInfo.telemetryId || "Not available"}
+${systemSection}
 
 ## Logs
 \`\`\`
@@ -101,8 +113,10 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md flex items-center gap-2">
           <LightbulbIcon className="h-4 w-4 text-blue-700 dark:text-blue-400 flex-shrink-0" />
           <p className="text-sm text-blue-700 dark:text-blue-400">
-            <strong>Tip:</strong> Try closing and re-opening Dyad as a temporary
-            workaround.
+            <strong>Tip:</strong>{" "}
+            {isWebMode
+              ? "Try reloading this page as a temporary workaround."
+              : "Try closing and re-opening Dyad as a temporary workaround."}
           </p>
         </div>
       </div>

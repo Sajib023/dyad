@@ -172,8 +172,32 @@ honoured in development builds) unless you already set them.
 
 - `docker compose logs -f` — startup logs, including the number of IPC
   handlers registered.
-- `GET /healthz` — returns `{"ok":true,"clients":N,"handlers":330}` once the
+- `GET /healthz` — returns `{"ok":true,"clients":N,"handlers":330,"uptimeSeconds":…,"version":…,"nodeVersion":…,"processStartedAt":…}` once the
   server is ready.
+
+## Built-in routes
+
+The web build ships a small set of always-available HTML surfaces that are
+served by the Node main process (not the SPA bundle):
+
+- `/auth/` — sign-in page rendered when `DYAD_WEB_TOKEN` is set and the
+  visitor is not yet authenticated. POSTs the entered token and on success
+  redirects to the original `?token=…` URL.
+- `/auth/logout` — POST that drops the session cookie and redirects home.
+  Hit it from any "Sign out" button you add to your custom UI.
+- `/welcome/` — public marketing landing page. Served at `/` when
+  `DYAD_WEB_TOKEN` is **not** set (anyone can use the instance). When the
+  token is set, `/` always returns the SPA so the auth flow is unambiguous.
+- The static handler sends a small set of security headers on every
+  response: `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+strict-origin-when-cross-origin`, and a `Permissions-Policy` that disables
+  the camera, microphone, and geolocation. Static assets are served with
+  ETag + 304 support and a long-lived `Cache-Control` so the SPA and
+  bundled JS/CSS are cached by the browser across reloads.
+- A 25-second WebSocket heartbeat is sent from the renderer; idle
+  connections are closed by the server after 90 seconds. This keeps
+  sockets alive behind cloudflared, nginx, and corporate proxies that
+  otherwise silently drop idle connections.
 - Missing worker bundles (`utilityProcess worker bundle not found`) mean
   `npm run build:web-workers` has not been run in this tree.
 - Preview shows "Dyad could not reach the preview server for app N" — the app

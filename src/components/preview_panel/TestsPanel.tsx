@@ -38,6 +38,7 @@ import {
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
+import { useWebMode } from "@/hooks/useWebMode";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { clearStagedDiffAtom } from "@/atoms/commitAtoms";
 import {
@@ -669,6 +670,12 @@ function FileRow({
 export function TestsPanel() {
   const { t } = useTranslation("home");
   const navigate = useNavigate();
+  const isWebMode = useWebMode();
+  if (isWebMode) {
+    // Self-hosted web: app tests require Playwright on app-<id>.localhost,
+    // which only resolves inside the container. Hide the panel.
+    return null;
+  }
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const specs = useAtomValue(currentTestSpecsAtom);
   const runState = useAtomValue(currentTestRunStateAtom);

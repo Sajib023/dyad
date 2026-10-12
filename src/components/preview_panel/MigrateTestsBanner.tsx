@@ -7,6 +7,7 @@ import {
   useLegacyTests,
   useMigrateLegacyTests,
 } from "@/hooks/useLegacyTestMigration";
+import { useWebMode } from "@/hooks/useWebMode";
 import { showError, showSuccess } from "@/lib/toast";
 import { MigrateTestsDialog } from "./MigrateTestsDialog";
 
@@ -21,6 +22,10 @@ export function MigrateTestsBanner({ appId }: { appId: number }) {
   const [dismissedIds, setDismissedIds] = useAtom(
     dismissedLegacyTestMigrationAppIdsAtom,
   );
+  const isWebMode = useWebMode();
+  if (isWebMode) {
+    return null;
+  }
   const dismissed = dismissedIds.has(appId);
   const legacyQuery = useLegacyTests(appId, !dismissed);
   const migrate = useMigrateLegacyTests();

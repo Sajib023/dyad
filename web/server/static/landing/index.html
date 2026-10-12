@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dyad — Your own AI app builder</title>
+    <meta
+      name="description"
+      content="Dyad is an open-source AI app builder that runs on your own machine. Local-first, BYOK, deploy anywhere."
+    />
+    <link rel="stylesheet" href="/welcome/landing.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">D</span>
+        <span>Dyad</span>
+      </div>
+      <h1>
+        Your own <span class="accent">AI app builder</span>, <br />on your own
+        machine.
+      </h1>
+      <p class="lede">
+        Describe an app in plain language. Dyad turns it into working code and
+        runs a live preview — all on your hardware, with your API keys, under
+        your control.
+      </p>
+      <div class="cta-row">
+        <a class="cta" href="/?token=" id="launch">Open Dyad →</a>
+        <a
+          class="cta secondary"
+          href="https://github.com/dyad-sh/dyad#readme"
+          rel="noopener noreferrer"
+        >
+          View on GitHub
+        </a>
+      </div>
+    </header>
+
+    <section class="cards" aria-label="Why Dyad">
+      <article class="card">
+        <span class="icon" aria-hidden="true">⌂</span>
+        <h3>Local-first</h3>
+        <p>
+          Runs as a single Docker container on your NAS, laptop, or small VM. No
+          cloud account, no per-seat pricing, no telemetry you can&rsquo;t turn
+          off.
+        </p>
+      </article>
+      <article class="card">
+        <span class="icon" aria-hidden="true">⚿</span>
+        <h3>Bring your own keys</h3>
+        <p>
+          Use Anthropic, OpenAI, Google, OpenRouter, or any OpenAI-compatible
+          provider. Your keys never leave the container.
+        </p>
+      </article>
+      <article class="card">
+        <span class="icon" aria-hidden="true">↗</span>
+        <h3>Deploy anywhere</h3>
+        <p>
+          Generate production-ready code, then ship to Cloudflare, Coolify,
+          Vercel, or your own server &mdash; straight from the chat.
+        </p>
+      </article>
+    </section>
+
+    <section class="howto" aria-label="Quick start">
+      <h2>Get started in one command</h2>
+      <ol>
+        <li>
+          <code>docker compose up -d --build</code>
+        </li>
+        <li>Open <code>http://localhost:3000</code> in your browser.</li>
+        <li>
+          (Optional) Set
+          <code>DYAD_WEB_TOKEN=$(openssl rand -hex 24)</code> in
+          <code>docker-compose.yml</code> to password-protect your instance.
+        </li>
+        <li>
+          Type an app idea into the prompt and press send. Dyad builds it.
+        </li>
+      </ol>
+    </section>
+
+    <footer class="footer">
+      <p>
+        Open source under Apache 2.0 ·
+        <a href="https://github.com/dyad-sh/dyad" rel="noopener noreferrer"
+          >GitHub</a
+        >
+        ·
+        <a href="https://dyad.sh" rel="noopener noreferrer">dyad.sh</a>
+      </p>
+    </footer>
+  </body>
+</html>

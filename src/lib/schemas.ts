@@ -599,6 +599,18 @@ const BaseUserSettingsFields = {
   enableContextCompaction: z.boolean().optional(),
   skipNotificationBanner: z.boolean().optional(),
   previewIdleTimeoutPolicy: z.enum(["default", "never"]).optional(),
+  // Web-only: persisted first-run onboarding checklist (hidden in desktop
+  // build but kept in the schema so a single settings file works for both
+  // surfaces). The `passthrough()` schema means existing installs won't
+  // lose any of these if they're missing.
+  webOnboarding: z
+    .object({
+      connectedProvider: z.boolean().optional(),
+      createdFirstApp: z.boolean().optional(),
+      ranFirstBuild: z.boolean().optional(),
+      dismissed: z.boolean().optional(),
+    })
+    .optional(),
 };
 
 /**

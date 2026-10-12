@@ -1,9 +1,14 @@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useSettings } from "@/hooks/useSettings";
+import { useWebMode } from "@/hooks/useWebMode";
 
 export function TestRunInPreviewSwitch() {
   const { settings, updateSettings } = useSettings();
+  const isWebMode = useWebMode();
+  if (isWebMode) {
+    return null;
+  }
 
   return (
     <div className="space-y-1.5">

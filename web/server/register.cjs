@@ -32,7 +32,23 @@ const esbuild = require("esbuild");
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const SRC_ROOT = path.join(REPO_ROOT, "src");
 const SHIM_PATH = path.resolve(__dirname, "electron_shim.ts");
+const PTY_SHIM_PATH = path.resolve(__dirname, "pty_shim.ts");
 const ELECTRON_LOG_ROOT = require.resolve("electron-log");
+
+function hasWorkingNodePty() {
+  const ptyDir = path.join(REPO_ROOT, "node_modules", "node-pty");
+  const candidates = [
+    path.join(ptyDir, "build", "Release", "pty.node"),
+    path.join(ptyDir, "build", "Debug", "pty.node"),
+    path.join(
+      ptyDir,
+      "prebuilds",
+      `${process.platform}-${process.arch}`,
+      "pty.node",
+    ),
+  ];
+  return candidates.some((p) => fs.existsSync(p));
+}
 
 /** Bumped when the transform below changes, invalidating every cached file. */
 const TRANSFORM_VERSION = "dyad-web-ts-1";
@@ -287,6 +303,7 @@ function resolveAsSourceFile(base) {
 
 function mapSpecifier(request) {
   if (request === "electron") return SHIM_PATH;
+  if (request === "node-pty" && !hasWorkingNodePty()) return PTY_SHIM_PATH;
   // `electron-log/main` is the Electron-only entry (it assumes app ready);
   // under plain Node the package's own index selects the working `./node`
   // transport implementation instead.

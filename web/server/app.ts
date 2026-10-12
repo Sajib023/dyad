@@ -44,6 +44,51 @@ const logger = {
   error: (...args: unknown[]) => console.error("[dyad-web]", ...args),
 };
 
+/** Monotonic wall clock for request timing. */
+const SERVER_STARTED_AT_MS = Date.now();
+const PROCESS_STARTED_AT_MS =
+  typeof process.uptime === "function"
+    ? Date.now() - process.uptime() * 1000
+    : SERVER_STARTED_AT_MS;
+
+/** Read package version once at startup so /healthz can surface it. */
+function readVersion(): string {
+  try {
+    // The web server is started from the repo root, so package.json is the
+    // workspace root's. The renderer also reads this, so they stay in sync.
+    const pkg = require(path.join(process.cwd(), "package.json")) as {
+      version?: string;
+    };
+    return pkg.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+const SERVER_VERSION = readVersion();
+
+/**
+ * Single-line access log. Format: `[dyad-web] METHOD /path → 200 (12ms)`.
+ * Skips successful health checks so a 30s probe doesn't drown the log.
+ */
+function logRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  startNs: bigint,
+): void {
+  const status = res.statusCode;
+  if (url.pathname === "/healthz" && status === 200) return;
+  const ms = Number((process.hrtime.bigint() - startNs) / 1_000_000n);
+  const method = req.method ?? "GET";
+  // Truncate the path to keep one line readable.
+  const path =
+    url.pathname.length > 80 ? url.pathname.slice(0, 77) + "…" : url.pathname;
+  const line = `${method} ${path} → ${status} (${ms}ms)`;
+  if (status >= 500) logger.error(line);
+  else if (status >= 400) logger.warn(line);
+  else logger.info(line);
+}
+
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -164,6 +209,19 @@ function issueSessionCookie(
   );
 }
 
+/**
+ * Clears the session cookie. Used by `POST /auth/logout` to drop the
+ * 30-day persistence when the user explicitly signs out.
+ */
+function clearSessionCookie(res: http.ServerResponse): void {
+  // Max-Age=0 + Path=/ tells the browser to drop the cookie for the whole
+  // site. Empty value covers older browsers that don't honor Max-Age.
+  res.setHeader(
+    "Set-Cookie",
+    `${TOKEN_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
+  );
+}
+
 function sendJson(
   res: http.ServerResponse,
   status: number,
@@ -226,6 +284,46 @@ function resolveStaticFile(
   return null;
 }
 
+/**
+ * Join a sub-path under a static root, rejecting any traversal attempts
+ * (e.g. `../package.json`). Returns just the basename if the sub-path
+ * tries to escape.
+ */
+function safeJoin(subPath: string): string {
+  const normalized = path.posix.normalize(subPath).replace(/^\/+/, "");
+  if (normalized.includes("..") || normalized.includes("\0")) {
+    return path.basename(normalized);
+  }
+  return normalized;
+}
+
+/**
+ * Serve a single, pre-resolved static file with the given cache directive.
+ * Used for the public auth/landing HTML — these are bundled with the
+ * server (not the renderer) and don't need path-rewriting or SPA fallback.
+ */
+function serveStaticFile(
+  res: http.ServerResponse,
+  absolutePath: string,
+  options: { cacheControl?: string } = {},
+): void {
+  if (!fs.existsSync(absolutePath)) {
+    sendJson(res, 404, { error: "Not found" });
+    return;
+  }
+  const ext = path.extname(absolutePath).toLowerCase();
+  const stat = fs.statSync(absolutePath);
+  const headers: Record<string, string> = {
+    "content-type": MIME_TYPES[ext] ?? "application/octet-stream",
+    "content-length": String(stat.size),
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "strict-origin-when-cross-origin",
+  };
+  if (options.cacheControl) headers["cache-control"] = options.cacheControl;
+  res.writeHead(200, headers);
+  fs.createReadStream(absolutePath).pipe(res);
+}
+
 function serveStatic(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -241,6 +339,9 @@ function serveStatic(
   const ext = path.extname(resolved.filePath).toLowerCase();
   const headers: Record<string, string> = {
     "content-type": MIME_TYPES[ext] ?? "application/octet-stream",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "permissions-policy": "camera=(), microphone=(), geolocation=()",
   };
 
   if (resolved.isIndex) {
@@ -253,6 +354,22 @@ function serveStatic(
 
   const stat = fs.statSync(resolved.filePath);
   headers["content-length"] = String(stat.size);
+
+  // ETag + Last-Modified for cheap 304 negotiation. Strong ETag based on
+  // mtime+size — fine for a single-instance self-hosted build.
+  const etag = `"${stat.size.toString(16)}-${stat.mtimeMs.toString(16)}"`;
+  headers["etag"] = etag;
+  headers["last-modified"] = stat.mtime.toUTCString();
+  if (
+    req.headers["if-none-match"] === etag ||
+    (req.headers["if-modified-since"] &&
+      new Date(req.headers["if-modified-since"]).getTime() >=
+        stat.mtime.getTime())
+  ) {
+    res.writeHead(304, headers);
+    res.end();
+    return;
+  }
 
   res.writeHead(200, headers);
   if (req.method === "HEAD") {
@@ -504,15 +621,35 @@ function wireIpcConnection(ws: WebSocket, publicOrigin: string): IpcConnection {
   }) as WebClientEndpoint & { mainFrame: RendererFrame };
   endpoint.mainFrame = frame;
 
+  // Track last-seen activity to close idle sockets (and any reverse proxies
+  // along the way) before they get killed externally.
+  const IDLE_TIMEOUT_MS = 90_000;
+  let lastSeen = Date.now();
+  const idleTimer = setInterval(() => {
+    if (Date.now() - lastSeen > IDLE_TIMEOUT_MS) {
+      try {
+        ws.terminate();
+      } catch {
+        // ignore
+      }
+      clearInterval(idleTimer);
+    }
+  }, 30_000);
+  const touch = () => {
+    lastSeen = Date.now();
+  };
   ws.on("message", (raw) => {
+    touch();
     void handleIpcMessage(ws, endpoint, raw.toString(), publicOrigin);
   });
 
   ws.on("close", () => {
+    clearInterval(idleTimer);
     unregisterClient(endpoint);
   });
 
   ws.on("error", () => {
+    clearInterval(idleTimer);
     unregisterClient(endpoint);
   });
 
@@ -525,6 +662,20 @@ async function handleIpcMessage(
   raw: string,
   publicOrigin: string,
 ): Promise<void> {
+  // Heartbeat frame: `{"t":"p"}` — pure transport liveness, no payload,
+  // bypasses the JSON codec. Reply immediately with the same frame so the
+  // client knows the round trip is healthy.
+  if (raw === '{"t":"p"}') {
+    if (ws.readyState === ws.OPEN) {
+      try {
+        ws.send('{"t":"p"}');
+      } catch {
+        // ignore
+      }
+    }
+    return;
+  }
+
   let frame: Record<string, unknown>;
   try {
     frame = decode(JSON.parse(raw)) as Record<string, unknown>;
@@ -534,6 +685,18 @@ async function handleIpcMessage(
 
   const type = frame.t;
   const channel = typeof frame.ch === "string" ? frame.ch : null;
+  if (type !== "i" && type !== "s" && type !== "p") return;
+  if (type === "p") {
+    // A ping wrapped through the codec — reply with a pong.
+    if (ws.readyState === ws.OPEN) {
+      try {
+        ws.send(JSON.stringify({ t: "p" }));
+      } catch {
+        // ignore
+      }
+    }
+    return;
+  }
   if (!channel) return;
 
   if (type === "s") {
@@ -670,19 +833,149 @@ export async function startWebServer(
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://placeholder");
+    const startNs = process.hrtime.bigint();
 
-    try {
-      if (url.pathname === "/healthz") {
-        sendJson(res, 200, {
-          ok: true,
-          clients: liveClientEndpoints().length,
-          handlers: ipcHandlers.size,
-        });
+    // /healthz is a liveness probe; never let auth or rate limiting gate it.
+    if (url.pathname === "/healthz") {
+      sendJson(res, 200, {
+        ok: true,
+        clients: liveClientEndpoints().length,
+        handlers: ipcHandlers.size,
+        uptimeSeconds: Math.round((Date.now() - SERVER_STARTED_AT_MS) / 1000),
+        version: SERVER_VERSION,
+        nodeVersion: process.version,
+        processStartedAt: new Date(PROCESS_STARTED_AT_MS).toISOString(),
+      });
+      logRequest(req, res, url, startNs);
+      return;
+    }
+
+    // POST /auth/logout — drop the session cookie and redirect home.
+    // Allowed regardless of auth state so the user can always sign out.
+    if (url.pathname === "/auth/logout") {
+      if (req.method !== "POST") {
+        sendJson(res, 405, { error: "Method not allowed" });
+        logRequest(req, res, url, startNs);
         return;
       }
+      clearSessionCookie(res);
+      res.writeHead(303, {
+        location: token ? "/auth/" : "/",
+        "content-length": "0",
+      });
+      res.end();
+      logRequest(req, res, url, startNs);
+      return;
+    }
 
+    // /auth without trailing slash redirects to /auth/ so relative assets resolve
+    if (url.pathname === "/auth") {
+      res.writeHead(302, { location: "/auth/", "content-length": "0" });
+      res.end();
+      logRequest(req, res, url, startNs);
+      return;
+    }
+
+    // /auth/ and /auth/index.html are public — they're the sign-in page.
+    if (url.pathname === "/auth/" || url.pathname === "/auth/index.html") {
+      serveStaticFile(
+        res,
+        path.join(process.cwd(), "web/server/static/auth/index.html"),
+        {
+          cacheControl: "no-cache",
+        },
+      );
+      logRequest(req, res, url, startNs);
+      return;
+    }
+    if (url.pathname.startsWith("/auth/")) {
+      serveStaticFile(
+        res,
+        path.join(
+          process.cwd(),
+          "web/server/static/auth",
+          safeJoin(url.pathname.slice("/auth/".length)),
+        ),
+        { cacheControl: "public, max-age=300" },
+      );
+      logRequest(req, res, url, startNs);
+      return;
+    }
+    if (url.pathname === "/auth.css") {
+      serveStaticFile(
+        res,
+        path.join(process.cwd(), "web/server/static/auth/auth.css"),
+        { cacheControl: "public, max-age=300" },
+      );
+      logRequest(req, res, url, startNs);
+      return;
+    }
+
+    // /welcome without trailing slash redirects to /welcome/
+    if (url.pathname === "/welcome") {
+      res.writeHead(302, { location: "/welcome/", "content-length": "0" });
+      res.end();
+      logRequest(req, res, url, startNs);
+      return;
+    }
+
+    // /welcome/ is the public marketing landing. When token auth is *off*,
+    // also serve it at the root `/` for first-time visitors unless they passed ?token=
+    // or ?app= to open the app.
+    const wantsLanding =
+      url.pathname === "/welcome/" || url.pathname === "/welcome/index.html";
+    const isRootNav = url.pathname === "/" || url.pathname === "/index.html";
+    const hasTokenQuery = url.searchParams.has("token");
+    if (wantsLanding || (isRootNav && !token && !hasTokenQuery)) {
+      serveStaticFile(
+        res,
+        path.join(process.cwd(), "web/server/static/landing/index.html"),
+        { cacheControl: "no-cache" },
+      );
+      logRequest(req, res, url, startNs);
+      return;
+    }
+    if (url.pathname.startsWith("/welcome/")) {
+      serveStaticFile(
+        res,
+        path.join(
+          process.cwd(),
+          "web/server/static/landing",
+          safeJoin(url.pathname.slice("/welcome/".length)),
+        ),
+        { cacheControl: "public, max-age=300" },
+      );
+      logRequest(req, res, url, startNs);
+      return;
+    }
+    if (url.pathname === "/landing.css") {
+      serveStaticFile(
+        res,
+        path.join(process.cwd(), "web/server/static/landing/landing.css"),
+        { cacheControl: "public, max-age=300" },
+      );
+      logRequest(req, res, url, startNs);
+      return;
+    }
+
+    try {
       if (!isAuthorized(req, token)) {
+        // For browser navigation requests (no extension, GET) return the
+        // sign-in HTML so the user sees a real page instead of a JSON 401.
+        const isNavigation =
+          (req.method ?? "GET") === "GET" && !path.extname(url.pathname);
+        if (isNavigation) {
+          // Issue a redirect so the URL reflects the auth surface.
+          res.writeHead(302, {
+            location: "/auth/",
+            "content-length": "0",
+          });
+          res.end();
+          logRequest(req, res, url, startNs);
+          return;
+        }
         sendJson(res, 401, { error: "Unauthorized" });
+        logRequest(req, res, url, startNs);
         return;
       }
 
@@ -694,18 +987,24 @@ export async function startWebServer(
         const target = parsePreviewTarget(url.pathname);
         if (!target) {
           sendJson(res, 400, { error: "Invalid preview target" });
+          logRequest(req, res, url, startNs);
           return;
         }
         forwardPreviewRequest(req, res, target);
+        // Preview requests are streamed; the access log will record on
+        // response close. Forward through to the standard log path.
+        res.on("close", () => logRequest(req, res, url, startNs));
         return;
       }
 
       if (req.method !== "GET" && req.method !== "HEAD") {
         sendJson(res, 405, { error: "Method not allowed" });
+        logRequest(req, res, url, startNs);
         return;
       }
 
       serveStatic(req, res, rendererDir);
+      logRequest(req, res, url, startNs);
     } catch (error) {
       logger.error("request handler failed", error);
       if (!res.headersSent) {
@@ -713,6 +1012,7 @@ export async function startWebServer(
       } else {
         res.end();
       }
+      logRequest(req, res, url, startNs);
     }
   });
 

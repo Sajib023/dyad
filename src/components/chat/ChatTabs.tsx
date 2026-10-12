@@ -61,6 +61,7 @@ import { ipc } from "@/ipc/types";
 import { usePreviewIframeManager } from "@/preview_iframe/PreviewIframeProvider";
 import { showError } from "@/lib/toast";
 import { useSettings } from "@/hooks/useSettings";
+import { useWebMode } from "@/hooks/useWebMode";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
 import { useStreamFinished } from "@/chat_stream/ChatStreamProvider";
 import { cn } from "@/lib/utils";
@@ -507,7 +508,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const { chats, loading } = useChats(null);
   const { apps } = useLoadApps();
   const { settings } = useSettings();
-  const enableMultiWindow = !!settings?.enableMultiWindow;
+  const isWebMode = useWebMode();
+  const enableMultiWindow = !!settings?.enableMultiWindow && !isWebMode;
   const store = useStore();
   const previewIframeManager = usePreviewIframeManager();
   const recentViewedChatIds = useAtomValue(recentViewedChatIdsAtom);

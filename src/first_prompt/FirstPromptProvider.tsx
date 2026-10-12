@@ -400,6 +400,19 @@ export function FirstPromptProvider({
             </DialogDescription>
           </DialogHeader>
           <SetupBanner variant="dialog" forceShow />
+          <div className="border-t border-border px-5 py-3 bg-muted/30 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setIsSetupDialogOpen(false);
+                controller.send({ type: "SETUP_DISMISSED" });
+                navigate({ to: "/templates" });
+              }}
+              className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+            >
+              Skip for now — let me browse templates first →
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
     </FirstPromptContext.Provider>
