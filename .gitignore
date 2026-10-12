@@ -124,3 +124,6 @@ storybook-static/
 eval-results/
 benchmark-results/
 benchmarks/code-explorer/repos/
+
+# Local tools
+.puku-cli/

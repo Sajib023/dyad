@@ -7,6 +7,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useWebMode } from "@/hooks/useWebMode";
 
 interface MacNotificationGuideDialogProps {
   open: boolean;
@@ -17,6 +18,14 @@ export function MacNotificationGuideDialog({
   open,
   onClose,
 }: MacNotificationGuideDialogProps) {
+  const isWebMode = useWebMode();
+
+  if (isWebMode) {
+    // Self-hosted web: browser's Notification API handles permission UI;
+    // macOS System Settings instructions don't apply.
+    return null;
+  }
+
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-xl">

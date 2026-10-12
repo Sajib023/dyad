@@ -16,12 +16,13 @@ import { INSPIRATION_PROMPTS } from "@/prompts/inspiration_prompts";
 
 import { ImportAppButton } from "@/components/ImportAppButton";
 import { FeaturedAppShowcase } from "@/components/FeaturedAppShowcase";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 
 import type { FileAttachment } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
 import { type ChatMode } from "@/lib/schemas";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
-import { RefreshCw, Zap } from "lucide-react";
+import { RefreshCw, Sparkles, Zap } from "lucide-react";
 import {
   useFirstPromptSaga,
   useFirstPromptSend,
@@ -43,7 +44,12 @@ export default function HomePage() {
   const sendFirstPrompt = useFirstPromptSend();
   const navigate = useNavigate();
   const search = useSearch({ from: "/" });
-  const { settings, envVars, loading: isSettingsLoading } = useSettings();
+  const {
+    settings,
+    envVars,
+    loading: isSettingsLoading,
+    updateSettings,
+  } = useSettings();
   const { isAnyProviderSetup, isLoading: isLoadingLanguageModelProviders } =
     useLanguageModelProviders();
   const hasConfiguredAiProvider =
@@ -102,6 +108,19 @@ export default function HomePage() {
     (options?: HomeSubmitOptions) => {
       const submittedAttachments = options?.attachments ?? [];
       if (!inputValue.trim() && submittedAttachments.length === 0) return false;
+      // First-build signal for the onboarding checklist (web only — the
+      // checklist component itself is a no-op on desktop).
+      if (settings?.webOnboarding && !settings.webOnboarding.ranFirstBuild) {
+        void updateSettings({
+          webOnboarding: { ...settings.webOnboarding, ranFirstBuild: true },
+        });
+      } else if (!settings?.webOnboarding) {
+        void updateSettings({
+          webOnboarding: {
+            ranFirstBuild: true,
+          },
+        });
+      }
       return sendFirstPrompt({
         type: "SUBMIT",
         payload: {
@@ -118,6 +137,8 @@ export default function HomePage() {
       homeSubmitChatMode,
       inputValue,
       sendFirstPrompt,
+      settings?.webOnboarding,
+      updateSettings,
     ],
   );
 
@@ -162,6 +183,9 @@ export default function HomePage() {
   // Main Home Page Content
   return (
     <div className="flex min-h-full w-full flex-col pb-28">
+      <div className="px-4 pt-4">
+        <OnboardingChecklist />
+      </div>
       <div className="flex flex-col items-center justify-center max-w-3xl w-full m-auto p-8 relative">
         <div className="w-full">
           <div className="mb-6 text-center">
@@ -238,6 +262,18 @@ export default function HomePage() {
             >
               <RefreshCw className="size-4 transition-transform duration-200 group-hover:rotate-[-25deg]" />
               {t("moreIdeas")}
+            </button>
+          </div>
+
+          <div className="mt-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+            <Sparkles className="size-3.5" />
+            <span>Or start from a template</span>
+            <button
+              type="button"
+              onClick={() => navigate({ to: "/templates" })}
+              className="font-medium text-foreground underline-offset-2 hover:underline"
+            >
+              Browse templates →
             </button>
           </div>
         </div>

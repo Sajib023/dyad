@@ -1,4 +1,5 @@
 import { useSettings } from "@/hooks/useSettings";
+import { useWebMode } from "@/hooks/useWebMode";
 
 import { SettingField } from "@/components/settings/SettingField";
 import {
@@ -16,6 +17,12 @@ import { useTranslation } from "react-i18next";
 export function ReleaseChannelSelector() {
   const { settings, updateSettings } = useSettings();
   const { t } = useTranslation("settings");
+  const isWebMode = useWebMode();
+
+  if (isWebMode) {
+    // Self-hosted web: no installer, no restart, no "Download Stable" CTA.
+    return null;
+  }
 
   if (!settings) {
     return null;

@@ -26,6 +26,7 @@ import { AppShowcaseCard } from "@/components/AppShowcaseCard";
 import { useAppThumbnails } from "@/hooks/useAppThumbnails";
 import { sortAppsForShowcase } from "@/lib/sortApps";
 import { ipc } from "@/ipc/types";
+import { ImportAppButton } from "@/components/ImportAppButton";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError } from "@/lib/toast";
 import { AppsViewTabs, type AppsView } from "@/components/AppsViewTabs";
@@ -296,15 +297,35 @@ export default function AppsPage() {
               Loading apps...
             </div>
           ) : filteredApps.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <p className="text-muted-foreground text-center">
-                {searchQuery
-                  ? "No apps match your search."
-                  : "You haven't created any apps yet."}
-              </p>
-              {!searchQuery && (
-                <Button onClick={() => navigate({ to: "/" })} size="sm">
-                  Create your first app
+            <div className="flex flex-col items-center justify-center py-16 gap-4 max-w-md mx-auto text-center">
+              <h2 className="text-lg font-medium text-foreground">
+                {searchQuery ? "No apps match your search." : "No apps yet"}
+              </h2>
+              {!searchQuery ? (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Describe an app in your own words and Dyad will build it for
+                    you, or pick a starter template.
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                    <Button
+                      onClick={() => navigate({ to: "/" })}
+                      data-testid="empty-create-first-app"
+                    >
+                      Start from a prompt
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => navigate({ to: "/templates" })}
+                    >
+                      Browse templates
+                    </Button>
+                    <ImportAppButton variant="outline" size="default" />
+                  </div>
+                </>
+              ) : (
+                <Button variant="outline" onClick={() => setSearchQuery("")}>
+                  Clear search
                 </Button>
               )}
             </div>

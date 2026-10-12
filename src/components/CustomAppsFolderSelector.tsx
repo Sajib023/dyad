@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { showError, showSuccess } from "@/lib/toast";
 import { ipc } from "@/ipc/types";
 import { FolderOpen, RotateCcw } from "lucide-react";
+import { useWebMode } from "@/hooks/useWebMode";
 
 export function CustomAppsFolderSelector() {
   const [isSelectingPath, setIsSelectingPath] = useState(false);
@@ -11,6 +12,7 @@ export function CustomAppsFolderSelector() {
     useState<string>("Loading...");
   const [isPathAvailable, setIsPathAvailable] = useState(true);
   const [isPathDefault, setIsPathDefault] = useState(true);
+  const isWebMode = useWebMode();
 
   useEffect(() => {
     // Fetch path on mount
@@ -69,28 +71,32 @@ export function CustomAppsFolderSelector() {
         <div className="flex gap-2">
           <Label className="text-sm font-medium">Customize Apps Folder</Label>
 
-          <Button
-            onClick={handleSelectCustomAppsFolder}
-            disabled={isSelectingPath}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-2"
-            data-testid="customize-apps-folder-button"
-          >
-            <FolderOpen className="w-4 h-4" />
-            {isSelectingPath ? "Selecting..." : "Select A Folder"}
-          </Button>
+          {!isWebMode && (
+            <>
+              <Button
+                onClick={handleSelectCustomAppsFolder}
+                disabled={isSelectingPath}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+                data-testid="customize-apps-folder-button"
+              >
+                <FolderOpen className="w-4 h-4" />
+                {isSelectingPath ? "Selecting..." : "Select A Folder"}
+              </Button>
 
-          {!isPathDefault && (
-            <Button
-              onClick={handleResetToDefault}
-              variant="ghost"
-              size="sm"
-              className="flex items-center gap-2"
-            >
-              <RotateCcw className="w-4 h-4" />
-              Reset to Default
-            </Button>
+              {!isPathDefault && (
+                <Button
+                  onClick={handleResetToDefault}
+                  variant="ghost"
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Reset to Default
+                </Button>
+              )}
+            </>
           )}
         </div>
         <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -112,11 +118,19 @@ export function CustomAppsFolderSelector() {
 
         {/* Help Text */}
         <div className="text-sm text-gray-500 dark:text-gray-400">
-          <p>
-            {isPathAvailable
-              ? "This is the top-level folder that Dyad will store new applications in."
-              : "Your apps folder is inaccessible. Make sure that the folder exists and has write permissions, or change it."}
-          </p>
+          {isWebMode ? (
+            <p>
+              This is the top-level folder that Dyad will store new applications
+              in. To change it on the self-hosted web build, restart the
+              container with a different <code>DYAD_HOME</code> volume mount.
+            </p>
+          ) : (
+            <p>
+              {isPathAvailable
+                ? "This is the top-level folder that Dyad will store new applications in."
+                : "Your apps folder is inaccessible. Make sure that the folder exists and has write permissions, or change it."}
+            </p>
+          )}
         </div>
       </div>
     </div>

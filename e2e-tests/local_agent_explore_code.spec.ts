@@ -109,26 +109,24 @@ testSkipIfWindows(
       .poll(
         () =>
           po.page.evaluate(async () => {
-            const threads = await (
+            const threads = (await (
               window as typeof window & {
                 electron: {
                   ipcRenderer: {
                     invoke: (
                       channel: string,
                       input: unknown,
-                    ) => Promise<
-                      Array<{
-                        persona: string;
-                        status: string;
-                        result?: { findingCount?: number };
-                      }>
-                    >;
+                    ) => Promise<unknown>;
                   };
                 };
               }
             ).electron.ipcRenderer.invoke("agent:list-subagents", {
               chatId: 1,
-            });
+            })) as Array<{
+              persona: string;
+              status: string;
+              result?: { findingCount?: number };
+            }>;
             const review = threads.find(
               (thread) => thread.persona === "reviewer",
             );

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useSettings } from "@/hooks/useSettings";
+import { useWebMode } from "@/hooks/useWebMode";
 import { ZoomLevel, ZoomLevelSchema, DEFAULT_ZOOM_LEVEL } from "@/lib/schemas";
 import { SettingField } from "@/components/settings/SettingField";
 import {
@@ -30,6 +31,7 @@ const ZOOM_LEVEL_DESCRIPTIONS: Record<ZoomLevel, string> = {
 export function ZoomSelector() {
   const { settings, updateSettings } = useSettings();
   const { t } = useTranslation("settings");
+  const isWebMode = useWebMode();
   const currentZoomLevel: ZoomLevel = useMemo(() => {
     const value = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;
     return ZoomLevelSchema.safeParse(value).success
@@ -38,37 +40,46 @@ export function ZoomSelector() {
   }, [settings?.zoomLevel]);
 
   return (
-    <SettingField
-      htmlFor="zoom-level"
-      label={t("general.zoom")}
-      description={t("general.zoomDescription")}
-    >
-      <Select
-        value={currentZoomLevel}
-        onValueChange={(value) =>
-          updateSettings({ zoomLevel: value as ZoomLevel })
-        }
+    <div className="space-y-2">
+      <SettingField
+        htmlFor="zoom-level"
+        label={t("general.zoom")}
+        description={t("general.zoomDescription")}
       >
-        <SelectTrigger
-          id="zoom-level"
-          className="w-full sm:w-[240px]"
-          aria-describedby="zoom-level-description"
+        <Select
+          value={currentZoomLevel}
+          onValueChange={(value) =>
+            updateSettings({ zoomLevel: value as ZoomLevel })
+          }
         >
-          <SelectValue placeholder={t("general.selectZoom")} />
-        </SelectTrigger>
-        <SelectContent>
-          {Object.entries(ZOOM_LEVEL_LABELS).map(([value, label]) => (
-            <SelectItem key={value} value={value}>
-              <div className="flex flex-col text-left">
-                <span>{label}</span>
-                <span className="text-xs text-muted-foreground">
-                  {ZOOM_LEVEL_DESCRIPTIONS[value as ZoomLevel]}
-                </span>
-              </div>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </SettingField>
+          <SelectTrigger
+            id="zoom-level"
+            className="w-full sm:w-[240px]"
+            aria-describedby="zoom-level-description"
+          >
+            <SelectValue placeholder={t("general.selectZoom")} />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(ZOOM_LEVEL_LABELS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                <div className="flex flex-col text-left">
+                  <span>{label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {ZOOM_LEVEL_DESCRIPTIONS[value as ZoomLevel]}
+                  </span>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingField>
+      {isWebMode && (
+        <p className="text-[13px] leading-relaxed text-muted-foreground">
+          Zoom is a browser-level setting. Use your browser&apos;s zoom controls
+          (Ctrl/Cmd + +/−) to change the page size — this control is only active
+          in the desktop app.
+        </p>
+      )}
+    </div>
   );
 }

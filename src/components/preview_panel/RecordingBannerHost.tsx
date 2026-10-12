@@ -7,6 +7,7 @@ import { annotatorModeAtom } from "@/atoms/previewAtoms";
 import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import { useChatMode } from "@/hooks/useChatMode";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useWebMode } from "@/hooks/useWebMode";
 import type { TestRecorderController } from "@/hooks/useTestRecorder";
 import { buildRecordedTestProposalPrompt } from "@/lib/test_recorder/assertion_request";
 import { showError, showInfo } from "@/lib/toast";
@@ -31,6 +32,12 @@ export function RecordingBannerHost({
 }) {
   const annotatorMode = useAtomValue(annotatorModeAtom);
   const previewMode = useAtomValue(previewModeAtom);
+  const isWebMode = useWebMode();
+  if (isWebMode) {
+    // Self-hosted web: test recording needs the same local Playwright bridge
+    // as the Tests panel, which requires app-<id>.localhost.
+    return null;
+  }
 
   // The annotator draws over the preview and owns that surface while it's on —
   // but only there. On any other tab the bar is the user's only way back to the

@@ -102,6 +102,13 @@ export function SetupBanner({
                 : "Dyad uses AI to build your app."}
             </p>
           )}
+          {!hasProviderSetup && (
+            <p className="mt-3 text-xs leading-5 text-muted-foreground/80 max-w-md mx-auto">
+              An API key lets Dyad talk to an AI provider on your behalf. You
+              only need one — OpenRouter (recommended) gives you access to
+              multiple models with a single key.
+            </p>
+          )}
         </div>
 
         <div className="mt-4">

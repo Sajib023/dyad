@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useSettings } from "@/hooks/useSettings";
+import { useWebMode } from "@/hooks/useWebMode";
 import { showError, showSuccess } from "@/lib/toast";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
@@ -21,6 +22,7 @@ import type { ManagedNodeInstallProgress, NodeSystemInfo } from "@/ipc/types";
 export function NodePathSelector() {
   const { settings, updateSettings } = useSettings();
   const { t } = useTranslation("settings");
+  const isWebMode = useWebMode();
   const queryClient = useQueryClient();
   const [isSelectingPath, setIsSelectingPath] = useState(false);
   const [isInstallingManagedNode, setIsInstallingManagedNode] = useState(false);
@@ -244,71 +246,75 @@ export function NodePathSelector() {
               )}
             </div>
 
-            <div className="flex shrink-0 rounded-md border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-900">
-              <button
-                type="button"
-                className={`h-8 rounded px-3 text-sm ${
-                  runtimePreference === "system"
-                    ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
-                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                }`}
-                onClick={() => handlePreferenceChange("system")}
-                aria-pressed={runtimePreference === "system"}
-              >
-                {t("general.runtimeSystem")}
-              </button>
-              <button
-                type="button"
-                className={`h-8 rounded px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
-                  runtimePreference === "managed"
-                    ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
-                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                }`}
-                onClick={() => handlePreferenceChange("managed")}
-                disabled={!managedSupported}
-                aria-pressed={runtimePreference === "managed"}
-              >
-                {t("general.runtimeManaged")}
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button
-              onClick={handleInstallManagedNode}
-              disabled={
-                isInstallingManagedNode ||
-                isRemovingManagedNode ||
-                !managedSupported
-              }
-              variant={managedInstalled ? "outline" : "default"}
-              size="sm"
-            >
-              {isInstallingManagedNode ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Download className="w-4 h-4" />
-              )}
-              {managedInstalled
-                ? t("general.reinstallManagedNode")
-                : t("general.installManagedNode")}
-            </Button>
-            {managedInstalled && (
-              <Button
-                onClick={handleRemoveManagedNode}
-                disabled={isInstallingManagedNode || isRemovingManagedNode}
-                variant="outline"
-                size="sm"
-              >
-                {isRemovingManagedNode ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Trash2 className="w-4 h-4" />
-                )}
-                {t("general.removeManagedNode")}
-              </Button>
+            {!isWebMode && (
+              <div className="flex shrink-0 rounded-md border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-900">
+                <button
+                  type="button"
+                  className={`h-8 rounded px-3 text-sm ${
+                    runtimePreference === "system"
+                      ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
+                      : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                  }`}
+                  onClick={() => handlePreferenceChange("system")}
+                  aria-pressed={runtimePreference === "system"}
+                >
+                  {t("general.runtimeSystem")}
+                </button>
+                <button
+                  type="button"
+                  className={`h-8 rounded px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
+                    runtimePreference === "managed"
+                      ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
+                      : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                  }`}
+                  onClick={() => handlePreferenceChange("managed")}
+                  disabled={!managedSupported}
+                  aria-pressed={runtimePreference === "managed"}
+                >
+                  {t("general.runtimeManaged")}
+                </button>
+              </div>
             )}
           </div>
+
+          {!isWebMode && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                onClick={handleInstallManagedNode}
+                disabled={
+                  isInstallingManagedNode ||
+                  isRemovingManagedNode ||
+                  !managedSupported
+                }
+                variant={managedInstalled ? "outline" : "default"}
+                size="sm"
+              >
+                {isInstallingManagedNode ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Download className="w-4 h-4" />
+                )}
+                {managedInstalled
+                  ? t("general.reinstallManagedNode")
+                  : t("general.installManagedNode")}
+              </Button>
+              {managedInstalled && (
+                <Button
+                  onClick={handleRemoveManagedNode}
+                  disabled={isInstallingManagedNode || isRemovingManagedNode}
+                  variant="outline"
+                  size="sm"
+                >
+                  {isRemovingManagedNode ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                  {t("general.removeManagedNode")}
+                </Button>
+              )}
+            </div>
+          )}
 
           {isInstallingManagedNode && (
             <div className="mt-3">
@@ -333,29 +339,33 @@ export function NodePathSelector() {
         <div className="flex gap-2">
           <Label className="text-sm font-medium">{t("general.nodePath")}</Label>
 
-          <Button
-            onClick={handleSelectNodePath}
-            disabled={isSelectingPath}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-2"
-          >
-            <FolderOpen className="w-4 h-4" />
-            {isSelectingPath
-              ? t("general.selecting")
-              : t("general.browseForNode")}
-          </Button>
+          {!isWebMode && (
+            <>
+              <Button
+                onClick={handleSelectNodePath}
+                disabled={isSelectingPath}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <FolderOpen className="w-4 h-4" />
+                {isSelectingPath
+                  ? t("general.selecting")
+                  : t("general.browseForNode")}
+              </Button>
 
-          {isCustomPath && (
-            <Button
-              onClick={handleResetToDefault}
-              variant="ghost"
-              size="sm"
-              className="flex items-center gap-2"
-            >
-              <RotateCcw className="w-4 h-4" />
-              {t("general.resetToDefault")}
-            </Button>
+              {isCustomPath && (
+                <Button
+                  onClick={handleResetToDefault}
+                  variant="ghost"
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  {t("general.resetToDefault")}
+                </Button>
+              )}
+            </>
           )}
         </div>
         <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -400,11 +410,13 @@ export function NodePathSelector() {
         {/* Help Text */}
         <div className="text-sm text-gray-500 dark:text-gray-400">
           {nodeStatus.isValid ? (
-            <p>{t("general.nodeConfigured")}</p>
+            <p>
+              {isWebMode
+                ? "Node is bundled in the container and ready to use."
+                : t("general.nodeConfigured")}
+            </p>
           ) : (
-            <>
-              <p>{t("general.nodeSelectFolder")}</p>
-            </>
+            <p>{t("general.nodeSelectFolder")}</p>
           )}
         </div>
       </div>
